@@ -138,6 +138,9 @@ class MeshIntegration(QObject):
             # Register this app as a discoverable service
             self._register_service()
 
+            # Start heartbeat timer (30 second interval)
+            self._start_heartbeat()
+
         except Exception as e:
             logger.warning(f"Mesh not available: {e}")
             self._client = None
@@ -168,12 +171,49 @@ class MeshIntegration(QObject):
         except Exception as e:
             logger.warning(f"Could not register with mesh: {e}")
 
+    def _start_heartbeat(self):
+        """Start periodic heartbeat to keep service alive in mesh."""
+        if not self.is_available():
+            return
+
+        # Create QTimer for heartbeat (30 second interval)
+        self._heartbeat_timer = QTimer()
+        self._heartbeat_timer.timeout.connect(self._send_heartbeat)
+        self._heartbeat_timer.start(30000)  # 30 seconds
+        logger.info(f"Heartbeat started for {self.instance_name} (30s interval)")
+
+    def _send_heartbeat(self):
+        """Send heartbeat to mesh proxy."""
+        try:
+            import httpx
+
+            response = httpx.post(
+                f"http://{self.proxy_host}:{self.proxy_port}/heartbeat",
+                json={"instance_name": self.instance_name},
+                timeout=5.0
+            )
+
+            if response.status_code == 200:
+                logger.debug(f"Heartbeat sent: {self.instance_name}")
+            else:
+                logger.warning(f"Heartbeat failed: HTTP {response.status_code}")
+
+        except Exception as e:
+            logger.warning(f"Heartbeat error: {e}")
+
     def is_available(self) -> bool:
         """Check if mesh is available."""
         return self._client is not None and self._connected
 
     def disconnect(self):
         """Disconnect from mesh."""
+        # Stop heartbeat timer
+        if hasattr(self, '_heartbeat_timer'):
+            self._heartbeat_timer.stop()
+
+        # Deregister from mesh
+        self._deregister_service()
+
         if self._client:
             try:
                 self._client.close()
@@ -183,6 +223,25 @@ class MeshIntegration(QObject):
                 self._client = None
                 self._connected = False
                 self.disconnected.emit()
+
+    def _deregister_service(self):
+        """Deregister this app from the mesh proxy."""
+        try:
+            import httpx
+
+            response = httpx.post(
+                f"http://{self.proxy_host}:{self.proxy_port}/deregister",
+                json={"instance_name": self.instance_name},
+                timeout=5.0
+            )
+
+            if response.status_code == 200:
+                logger.info(f"✓ Deregistered from mesh: {self.instance_name}")
+            else:
+                logger.warning(f"Failed to deregister: HTTP {response.status_code}")
+
+        except Exception as e:
+            logger.warning(f"Could not deregister from mesh: {e}")
 
     def _wrap_with_retry(self, func: Callable, *args, **kwargs):
         """
