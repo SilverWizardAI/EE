@@ -1,0 +1,63 @@
+{
+  "env": {
+    "ANTHROPIC_MODEL": "claude-sonnet-4-5-20250929"
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
+      "Grep",
+      "Glob",
+      "ListDir",
+      "Task"
+    ],
+    "deny": []
+  },
+  "autonomy": {
+    "description": "FULL autonomy within EE folder only",
+    "scope": {
+      "allowed_paths": [
+        "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/EE/**"
+      ],
+      "read_access_paths": [
+        "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/**"
+      ],
+      "git": {
+        "commit": "always",
+        "push": "always",
+        "branch": "always",
+        "description": "Full git autonomy - can commit, push, create branches without asking"
+      },
+      "bash": {
+        "local_commands": "always",
+        "git_commands": "always",
+        "description": "Full bash autonomy for all commands within EE folder"
+      }
+    },
+    "restrictions": {
+      "forbidden_paths": [
+        "/Users/stevedeighton/Documents/**",
+        "/Users/stevedeighton/Desktop/**",
+        "/Users/stevedeighton/Downloads/**",
+        "/Users/stevedeighton/Pictures/**",
+        "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_*",
+        "!/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/EE/**"
+      ],
+      "description": "NO autonomy outside EE folder - must ask permission"
+    }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '✨ Silver Wizard Software - Enterprise Architect Session Started - FULL AUTONOMY MODE'"
+          }
+        ]
+      }
+    ]
+  }
+}
