@@ -580,3 +580,62 @@ sys.exit(create_application(TestApp1, "TestApp1", VERSION))
 ---
 
 **Key Lesson:** "Test until CLEAN" - User's retest caught bug that initial validation missed. Continuous validation is critical for production-ready infrastructure.
+
+---
+
+## ✅ Session 2026-02-05 (Final): F-String Template Bug Fixed - CLEAN RUN
+
+### Root Cause Found
+
+**The Real Bug:** F-string template had unescaped braces in default parameter values
+
+```python
+# WRONG (what we had):
+def __init__(self, app_name: str = "{app_name}", ...):
+#                                   ^ evaluated by f-string, became empty
+
+# RIGHT (fixed):
+def __init__(self, app_name: str = "{{app_name}}", ...):
+#                                   ^^ escaped braces = literal string
+```
+
+### Impact
+
+The f-string was evaluating `{app_name}` inside the string literal, causing Python to generate:
+```python
+def __init__(self, app_name: str = , app_version: str = "0.1.0", **kwargs):
+#                              ^^^ SYNTAX ERROR - empty default value
+```
+
+Python's parser then failed and fell back to:
+```python
+def __init__(self):  # No parameters at all
+```
+
+### Fix Applied
+
+**Files:** `templates/parent_cc/tools/create_app.py`
+- Line 285: Counter app `__init__` - escaped `{{app_name}}`
+- Line 378: Logger app `__init__` - escaped `{{app_name}}`
+
+**Commit:** `9fab43b` - "fix: Escape braces in f-string template for __init__ default values"
+
+### Validation - CLEAN RUN ✅
+
+**Test Results:**
+```
+TestApp1: PID 11497 ✅ RUNNING
+TestApp2: PID 11556 ✅ RUNNING
+Connected to MM mesh: ✅
+Logs: NO ERRORS ✅
+```
+
+**Startup sequence confirmed:**
+1. ✅ Version manager initialized
+2. ✅ Settings manager initialized
+3. ✅ MeshClient connected to proxy
+4. ✅ Parent CC protocol initialized
+5. ✅ Module monitor active
+6. ✅ UI initialized successfully
+
+**Status:** Template bugs FIXED. Apps launch cleanly. Architecture VALIDATED.
