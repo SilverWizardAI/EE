@@ -639,3 +639,103 @@ Logs: NO ERRORS ✅
 6. ✅ UI initialized successfully
 
 **Status:** Template bugs FIXED. Apps launch cleanly. Architecture VALIDATED.
+
+---
+
+## ✅ Session 2026-02-05 (Final Fix): PCC Validation Caught My Error
+
+### What Happened
+
+**EE (me) attempted fix:**
+- Changed `{app_name}` to `{{app_name}}` in template
+- Thought this was correct escaping for f-strings
+- Committed and pushed (commit `9fab43b`)
+- **Did NOT test generated apps actually run**
+
+**PCC validated with actual testing:**
+- Created apps from my "fixed" template
+- **Apps failed to launch** - same errors!
+- Found my brace escaping was WRONG
+- Created fully tested working version
+- Documented all 10 issues with evidence
+
+### The Actual Bug
+
+**My "fix" (WRONG):**
+```python
+def __init__(self, app_name: str = "{{app_name}}", ...):
+#                                   ^^^^^^^^^^^ Double braces
+```
+
+Generated code:
+```python
+def __init__(self, app_name: str = "{app_name}", ...):  # Invalid Python!
+```
+
+**Correct fix (PCC's version):**
+```python
+def __init__(self, app_name: str = "{app_name}", ...):
+#                                   ^^^^^^^^^^ Single braces
+```
+
+Generated code:
+```python
+def __init__(self, app_name: str = "TestApp1", ...):  # Valid Python!
+```
+
+### Why I Was Wrong
+
+F-string evaluation:
+- Inside f-string template: `f'''..."{app_name}"...'''`
+- `{app_name}` → substitutes with actual value → `"TestApp1"` ✅
+- `{{app_name}}` → escapes to literal → `"{app_name}"` ❌ (invalid syntax)
+
+**Lesson:** Context matters. Braces in different positions need different escaping.
+
+### PCC's Complete Findings
+
+**10 bugs documented in detail:**
+1. Missing VERSION import (both templates)
+2. Wrong `__init__` signature (both templates)
+3. Incomplete `super().__init__` call (both templates)
+4. Hardcoded app_name (both templates)
+5. Missing VERSION argument (both templates)
+
+**PCC provided:**
+- ✅ Working code with inline annotations
+- ✅ Complete issue analysis (Issues.md)
+- ✅ Fixed tools (create_app_FIXED.py)
+- ✅ Test validation (100% success rate)
+- ✅ Documentation (1500+ lines)
+
+**PCC's test results:**
+```
+Create TestApp1: ✅ PASS
+Create TestApp2: ✅ PASS
+Launch TestApp1: ✅ PASS
+Launch TestApp2: ✅ PASS
+MM Mesh Registration: ✅ PASS (both apps registered)
+Process Management: ✅ PASS
+Stop Apps: ✅ PASS
+```
+
+### What EE Learned
+
+**1. Testing Beats Theory**
+- I "fixed" the template but never ran generated apps
+- PCC actually tested → found my fix was wrong
+- Working code > theoretical fixes
+
+**2. Validate End-to-End**
+- Template changes must be tested with real app generation
+- Launch the app, don't just check syntax
+- Integration tests catch what unit tests miss
+
+**3. Document With Evidence**
+- PCC provided working code, error logs, test results
+- Made it easy to see exactly what was wrong
+- Reproducible validation
+
+**Commit:** `aa33e97` - "fix: Correct brace escaping in template default values"
+
+**Status:** NOW actually fixed (validated by PCC's testing methodology).
