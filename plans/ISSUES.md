@@ -6,7 +6,59 @@
 
 ## 🐛 Current Issues
 
-### ⚠️ Issue #1: MM Mesh Service Registration Not Automatic
+### ✅ Issue #1: MM Mesh Service Registration Not Automatic
+**Severity:** Medium
+**Status:** RESOLVED (commit `38be6c1`)
+
+**Solution Applied:**
+- Added automatic service registration on connection
+- Added 30-second heartbeat timer
+- Added deregistration on disconnect
+
+Apps now properly register and maintain active status in mesh.
+
+---
+
+### ⚠️ Issue #3: MM Proxy Missing Periodic Health Checks
+**Severity:** Medium
+**Discovered:** 2026-02-05
+
+**Problem:**
+MM mesh proxy has `check_service_health()` function but doesn't call it periodically.
+
+**Impact:**
+- Dead services marked after 120s of no heartbeat (works)
+- But status only updated when function is explicitly called
+- Stale services may linger until manual cleanup
+
+**Root Cause:**
+Proxy server doesn't have background thread running health checks.
+
+**Recommended Fix (for MM project):**
+```python
+# In CentralProxyServer.__init__:
+import threading
+
+def _health_check_loop():
+    while self.running:
+        self.registry.check_service_health()
+        time.sleep(60)  # Check every minute
+
+self.health_thread = threading.Thread(target=_health_check_loop, daemon=True)
+self.health_thread.start()
+```
+
+**Workaround:**
+Apps send heartbeats properly. Dead services will be detected when:
+- Another service queries the mesh
+- Manual health check is run
+- Proxy restarts
+
+**Priority:** Medium (not critical for validation testing)
+
+---
+
+### ⚠️ Issue #1 (Original): MM Mesh Service Registration Not Automatic
 **Severity:** Medium
 **Discovered:** 2026-02-05 (Test_App_PCC validation)
 
