@@ -19,10 +19,17 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QPalette, QColor
 
-from .settings_manager import SettingsManager
-from .version_manager import VersionManager
-from .mesh_integration import MeshIntegration
-from .module_monitor import ModuleMonitor
+# Handle both package and script execution
+try:
+    from .settings_manager import SettingsManager
+    from .version_manager import VersionManager
+    from .mesh_integration import MeshIntegration
+    from .module_monitor import ModuleMonitor
+except ImportError:
+    from settings_manager import SettingsManager
+    from version_manager import VersionManager
+    from mesh_integration import MeshIntegration
+    from module_monitor import ModuleMonitor
 
 
 logger = logging.getLogger(__name__)
