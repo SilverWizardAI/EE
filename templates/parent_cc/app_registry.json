@@ -1,0 +1,19 @@
+{
+  "pcc_name": "{PCC_NAME}",
+  "pcc_folder": "{PCC_FOLDER_PATH}",
+  "created": "{CREATED_TIMESTAMP}",
+  "version": "1.0.0",
+  "apps": {},
+  "statistics": {
+    "total_apps": 0,
+    "running_apps": 0,
+    "stopped_apps": 0,
+    "total_assistance_requests": 0,
+    "total_health_checks": 0
+  },
+  "mm_mesh": {
+    "proxy_url": "http://localhost:6001",
+    "pcc_service_name": "{PCC_NAME}_parent_cc",
+    "connected": false
+  }
+}

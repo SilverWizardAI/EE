@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/*.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App-specific
+apps/*/version_info/_version_data.py
+apps/*/__pycache__/
+apps/*/build/
+apps/*/dist/
+
+# Temporary
+*.tmp
+*.temp
+.cache/

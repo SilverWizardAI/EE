@@ -1,0 +1,38 @@
+{
+  "autonomy": {
+    "mode": "full",
+    "scope": "folder",
+    "description": "Full autonomy within Parent CC folder"
+  },
+  "permissions": {
+    "file_operations": {
+      "read": ["**/*"],
+      "write": ["**/*"],
+      "delete": ["**/*"],
+      "scope": "folder"
+    },
+    "git_operations": {
+      "init": true,
+      "commit": true,
+      "push": true,
+      "branch": true,
+      "remote": true
+    },
+    "bash_commands": {
+      "allowed": true,
+      "scope": "folder",
+      "restrictions": []
+    },
+    "spawning": {
+      "spawn_claude_instances": true,
+      "manage_instances": true
+    }
+  },
+  "folder_scope": "{PCC_FOLDER_PATH}",
+  "read_access": [
+    "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/**"
+  ],
+  "templates": {
+    "pyqt_app": "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/EE/templates/pyqt_app"
+  }
+}
