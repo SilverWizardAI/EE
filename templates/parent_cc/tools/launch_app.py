@@ -1,20 +1,28 @@
 """
 Launch Managed App
 
-Launch applications and spawn Claude instances for them.
+Launch applications as Python processes (simplified architecture).
 
-Module Size Target: <400 lines (Current: ~250 lines)
+Apps run directly with python3 main.py, no Claude instance needed.
+Parent CC monitors apps via MM mesh health checks.
+
+Module Size Target: <400 lines (Current: ~180 lines)
 """
 
 import json
 import logging
+import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
-from .registry import AppRegistry
-from .spawn_claude import spawn_claude_instance
+# Handle both package and script execution
+try:
+    from .registry import AppRegistry
+except ImportError:
+    from registry import AppRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -24,28 +32,27 @@ def launch_app(
     app_name: str,
     pcc_folder: Path,
     registry_path: Path,
-    initial_prompt: Optional[str] = None,
+    headless: bool = False,
     generate_version: bool = True
 ) -> dict:
     """
-    Launch application and spawn Claude instance.
+    Launch application as Python process.
 
     Args:
         app_name: Name of app to launch
         pcc_folder: Parent CC folder path
         registry_path: Path to app registry
-        initial_prompt: Optional initial prompt for Claude instance
+        headless: Run in headless mode (no GUI)
         generate_version: Generate version data before launch
 
     Returns:
-        Launch result with instance info
+        Launch result with process info
 
     Example:
         result = launch_app(
             app_name="TestApp1",
             pcc_folder=Path("/A_Coding/Test_App_PCC"),
-            registry_path=Path("/A_Coding/Test_App_PCC/app_registry.json"),
-            initial_prompt="Run the application"
+            registry_path=Path("/A_Coding/Test_App_PCC/app_registry.json")
         )
     """
     logger.info(f"Launching app: {app_name}")
@@ -64,34 +71,70 @@ def launch_app(
     if not app_folder.exists():
         raise FileNotFoundError(f"App folder not found: {app_folder}")
 
+    # Check if main.py exists
+    main_py = app_folder / "main.py"
+    if not main_py.exists():
+        raise FileNotFoundError(f"main.py not found in {app_folder}")
+
     # Generate version data if requested
     if generate_version:
         _generate_version_data(app_folder, app_name)
 
-    # Build initial prompt if not provided
-    if not initial_prompt:
-        initial_prompt = _build_initial_prompt(app_name, app_entry)
+    # Create logs directory
+    log_dir = pcc_folder / "logs"
+    log_dir.mkdir(exist_ok=True)
 
-    # Spawn Claude instance
-    instance_info = spawn_claude_instance(
-        app_folder=app_folder,
-        app_name=app_name,
-        initial_prompt=initial_prompt,
-        background=True
-    )
+    # Create log file for this app
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"{app_name}_{timestamp}.log"
+
+    # Build command
+    cmd = ["python3", "main.py"]
+    if headless:
+        cmd.append("--headless")
+
+    # Launch Python process
+    with open(log_file, 'w') as log:
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(app_folder),
+            stdout=log,
+            stderr=subprocess.STDOUT,  # Combine stderr with stdout
+            start_new_session=True  # Detach from parent (proper daemon)
+        )
+
+    # Wait a moment to ensure it started
+    time.sleep(0.5)
+
+    # Check if still running
+    if process.poll() is not None:
+        # Process already exited
+        with open(log_file) as f:
+            error_output = f.read()
+        raise RuntimeError(
+            f"App {app_name} failed to start. Exit code: {process.returncode}\n"
+            f"Log: {log_file}\n{error_output}"
+        )
 
     # Update registry
-    registry.set_claude_instance(app_name, instance_info['instance_id'])
+    instance_id = f"{app_name}_{process.pid}"
+    registry.update_app(app_name, {
+        "process_id": process.pid,
+        "instance_id": instance_id,
+        "log_file": str(log_file),
+        "launched_at": datetime.now().isoformat()
+    })
     registry.set_status(app_name, "running")
 
-    logger.info(f"✓ App launched: {app_name} ({instance_info['instance_id']})")
+    logger.info(f"✓ App launched: {app_name} (PID: {process.pid}, Log: {log_file})")
 
     return {
         "app_name": app_name,
-        "instance_id": instance_info['instance_id'],
-        "pid": instance_info['pid'],
+        "instance_id": instance_id,
+        "pid": process.pid,
         "status": "launched",
-        "app_folder": str(app_folder)
+        "app_folder": str(app_folder),
+        "log_file": str(log_file)
     }
 
 
@@ -132,46 +175,6 @@ def _generate_version_data(app_folder: Path, app_name: str):
         logger.warning(f"Failed to generate version data: {e}")
 
 
-def _build_initial_prompt(app_name: str, app_entry: dict) -> str:
-    """
-    Build initial prompt for Claude instance.
-
-    Args:
-        app_name: App name
-        app_entry: App registry entry
-
-    Returns:
-        Initial prompt
-    """
-    template = app_entry.get('template', 'unknown')
-    features = app_entry.get('metadata', {}).get('features', [])
-
-    prompt = f"""You are managing the {app_name} application.
-
-App Details:
-- Name: {app_name}
-- Template: {template}
-- Features: {', '.join(features) if features else 'standard'}
-
-Your tasks:
-1. Review the application code and structure
-2. Run the application (execute main.py if it exists)
-3. Monitor for errors or issues
-4. Respond to any assistance requests from Parent CC
-5. Keep the app running and healthy
-
-Remember:
-- You are an autonomous app instance
-- Report issues to Parent CC via MM mesh
-- Request help when you encounter complex situations
-- Keep modules under 400 lines
-
-Start the application now.
-"""
-
-    return prompt
-
-
 def stop_app(
     app_name: str,
     registry_path: Path,
@@ -199,22 +202,39 @@ def stop_app(
         logger.warning(f"App not running: {app_name}")
         return
 
-    instance_id = app_entry.get('claude_instance_id')
-    if not instance_id:
-        logger.warning(f"No Claude instance ID for {app_name}")
+    # Get process ID
+    pid = app_entry.get('process_id')
+    if not pid:
+        logger.warning(f"No process ID for {app_name}")
         return
 
-    # Extract PID from instance_id (format: appname_pid)
+    # Kill the Python process
     try:
-        pid = int(instance_id.split('_')[-1])
+        import signal
+        import os
 
-        from .spawn_claude import stop_instance
-        stop_instance(instance_id, pid)
+        # Try graceful shutdown first (SIGTERM)
+        os.kill(pid, signal.SIGTERM)
+        time.sleep(1)
+
+        # Check if still running
+        try:
+            os.kill(pid, 0)  # Check if process exists
+            # Still running, force kill
+            os.kill(pid, signal.SIGKILL)
+            logger.warning(f"Force killed {app_name} (PID: {pid})")
+        except ProcessLookupError:
+            # Already exited
+            pass
 
         # Update registry
         registry.set_status(app_name, "stopped")
 
-        logger.info(f"✓ App stopped: {app_name}")
+        logger.info(f"✓ App stopped: {app_name} (reason: {reason})")
+
+    except ProcessLookupError:
+        logger.warning(f"Process {pid} not found (already exited)")
+        registry.set_status(app_name, "stopped")
 
     except Exception as e:
         logger.error(f"Failed to stop app: {e}")
@@ -225,7 +245,9 @@ def main():
     """Command-line interface."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Launch or stop managed app")
+    parser = argparse.ArgumentParser(
+        description="Launch or stop managed app (simplified - no Claude instances)"
+    )
     parser.add_argument("--app", required=True, help="App name")
     parser.add_argument(
         "--pcc-folder",
@@ -244,8 +266,9 @@ def main():
         help="Action to perform"
     )
     parser.add_argument(
-        "--prompt",
-        help="Initial prompt for launch"
+        "--headless",
+        action="store_true",
+        help="Run app in headless mode (no GUI)"
     )
 
     args = parser.parse_args()
@@ -259,7 +282,7 @@ def main():
                 app_name=args.app,
                 pcc_folder=pcc_folder,
                 registry_path=registry_path,
-                initial_prompt=args.prompt
+                headless=args.headless
             )
             print(json.dumps(result, indent=2))
 

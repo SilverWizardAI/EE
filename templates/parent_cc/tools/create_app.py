@@ -222,9 +222,6 @@ def _customize_app(app_folder: Path, app_name: str, features: List[str]):
         content = content.replace("My App", app_name)
         readme_file.write_text(content)
 
-    # Customize .claude/ directory for Claude instance
-    _customize_claude_config(app_folder, app_name, features)
-
     # Create main.py if features include specific app types
     if "counter" in features:
         _create_counter_app(app_folder, app_name)
