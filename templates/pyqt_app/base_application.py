@@ -45,7 +45,7 @@ class BaseApplication(QMainWindow):
     def __init__(
         self,
         app_name: str,
-        app_version: str,
+        app_version: Optional[str] = None,
         organization: str = "Silver Wizard Software",
         enable_mesh: bool = True,
         enable_module_monitor: bool = True,
@@ -54,24 +54,27 @@ class BaseApplication(QMainWindow):
         super().__init__(parent)
 
         self.app_name = app_name
-        self.app_version = app_version
         self.organization = organization
 
         self._setup_logging()
 
+        # Initialize version manager (auto-detects version from version_info if available)
+        self.version = VersionManager(
+            app_name=app_name,
+            manual_version=app_version
+        )
+
+        # Use detected version
+        self.app_version = self.version.version
+
         logger.info("=" * 70)
-        logger.info(f"🚀 STARTING {app_name.upper()} v{app_version}")
+        logger.info(f"🚀 STARTING {app_name.upper()} v{self.app_version}")
         logger.info("=" * 70)
 
-        # Initialize managers
+        # Initialize settings manager
         self.settings = SettingsManager(
             organization=organization,
             application=app_name
-        )
-
-        self.version = VersionManager(
-            app_name=app_name,
-            version=app_version
         )
 
         # Optional integrations
@@ -248,12 +251,10 @@ class BaseApplication(QMainWindow):
         )
 
     def show_about_dialog(self):
-        """Show about dialog."""
-        about_text = (
-            f"<h2>{self.app_name}</h2>"
-            f"<p>Version: {self.app_version}</p>"
-            f"<p>Build: {self.version.get_build_info()['build_date']}</p>"
-            f"<p>&copy; {datetime.now().year} {self.organization}</p>"
+        """Show about dialog with version information."""
+        about_text = self.version.get_about_text(
+            include_copyright=True,
+            organization=self.organization
         )
         QMessageBox.about(self, f"About {self.app_name}", about_text)
 
