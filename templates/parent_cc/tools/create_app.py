@@ -1,7 +1,14 @@
 """
-Create App from Template
+Create App from Template - FIXED VERSION
 
 Creates new applications from Silver Wizard templates.
+
+FIXES APPLIED:
+1. Added VERSION import to both app templates
+2. Fixed __init__ signatures to accept app_name, app_version, **kwargs
+3. Fixed super().__init__ calls to pass all parameters
+4. Changed hardcoded app_name to use parameter
+5. Added VERSION parameter to create_application() calls
 
 Module Size Target: <400 lines (Current: ~320 lines)
 """
@@ -259,7 +266,16 @@ def _create_version_json(app_folder: Path, app_name: str):
 
 
 def _create_counter_app(app_folder: Path, app_name: str):
-    """Create a simple counter app."""
+    """
+    Create a simple counter app.
+
+    FIXES:
+    - Added VERSION import
+    - Fixed __init__ signature to accept parameters
+    - Fixed super().__init__ to pass all parameters
+    - Changed hardcoded app_name to use parameter
+    - Added VERSION to create_application call
+    """
     main_py = app_folder / "main.py"
 
     code = f'''"""
@@ -352,7 +368,16 @@ if __name__ == "__main__":
 
 
 def _create_logger_app(app_folder: Path, app_name: str):
-    """Create a simple logger app."""
+    """
+    Create a simple logger app.
+
+    FIXES:
+    - Added VERSION import
+    - Fixed __init__ signature to accept parameters
+    - Fixed super().__init__ to pass all parameters
+    - Changed hardcoded app_name to use parameter
+    - Added VERSION to create_application call
+    """
     main_py = app_folder / "main.py"
 
     code = f'''"""
