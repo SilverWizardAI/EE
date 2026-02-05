@@ -506,14 +506,16 @@ def main():
     )
     parser.add_argument(
         "--registry",
-        help="Path to app registry"
+        default="app_registry.json",
+        help="Path to app registry (default: app_registry.json)"
     )
 
     args = parser.parse_args()
 
     try:
         pcc_folder = Path(args.pcc_folder)
-        registry_path = Path(args.registry) if args.registry else None
+        # Registry path defaults to app_registry.json in pcc_folder
+        registry_path = pcc_folder / args.registry if args.registry else None
 
         app_folder = create_app_from_template(
             app_name=args.name,
