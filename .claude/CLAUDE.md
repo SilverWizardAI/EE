@@ -243,3 +243,36 @@ EE/
 - **GitHub Organization:** https://github.com/SilverWizardAI
 - **Sister Projects:** `/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/`
 - **Parent Permissions:** `/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/.claude/`
+
+---
+
+## 🧭 Navigation for New CC Instances
+
+**START HERE when resuming work:**
+
+1. **Read current status:** `status/COMPLETED.md` - What's already done
+2. **Check next steps:** `plans/NEXT_STEPS.md` - What to do next
+3. **Review issues:** `plans/ISSUES.md` - Known problems to fix
+
+**Project Structure:**
+```
+EE/
+├── templates/pyqt_app/    # PyQt6 app template (in progress)
+├── status/                # What's completed
+│   ├── COMPLETED.md       # Achievement log
+│   └── session_summaries/ # Per-session details
+├── plans/                 # What's next
+│   ├── NEXT_STEPS.md      # Immediate priorities (READ THIS FIRST)
+│   ├── BACKLOG.md         # Future work
+│   └── ISSUES.md          # Bugs to fix
+└── docs/                  # Architecture docs
+```
+
+**Key Projects:**
+- **MM** (`/A_Coding/MM/`) - MCP Mesh (central proxy running on port 6001)
+- **CMC** (`/A_Coding/CMC/`) - Reference app for template (has module bloat to fix)
+- **PIW** (`/A_Coding/PIW/`) - Has `version_info` library to copy into template
+
+**Current Focus:** Building PyQt6 app template with MM integration and Parent CC protocol
+
+**Important:** Keep modules <400 lines (warning at 600, critical at 800). Module monitor built into template.

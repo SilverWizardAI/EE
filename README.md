@@ -80,29 +80,34 @@ uv run pytest
 
 ```
 EE/
-├── .claude/                 # Claude AI configuration
-├── infrastructure/          # Core infrastructure components
-│   ├── common/             # Shared utilities
-│   ├── security/           # Security frameworks
-│   └── monitoring/         # Observability tools
-├── tools/                  # Development tools
-│   ├── cli/               # Command-line tools
-│   ├── build/             # Build systems
-│   └── testing/           # Testing frameworks
-├── shared/                 # Shared libraries
-│   ├── models/            # Data models
-│   ├── protocols/         # Communication protocols
-│   └── interfaces/        # API interfaces
+├── .claude/                 # Claude AI configuration & instructions
+│   ├── CLAUDE.md           # Project overview (READ THIS FIRST)
+│   └── settings.json       # Full autonomy configuration
 ├── templates/              # Project templates
+│   └── pyqt_app/          # PyQt6 app template (IN PROGRESS)
+│       ├── base_application.py    # Core app class with MM integration
+│       ├── settings_manager.py    # Settings & theme management
+│       ├── mesh_integration.py    # MM mesh client wrapper
+│       ├── module_monitor.py      # Module size enforcement
+│       └── README.md              # Template usage guide
+├── status/                 # Track completed work
+│   ├── COMPLETED.md        # What's done (READ SECOND)
+│   └── session_summaries/  # Per-session details
+├── plans/                  # Future work planning
+│   ├── NEXT_STEPS.md      # Immediate priorities (READ THIRD)
+│   ├── BACKLOG.md         # Future enhancements
+│   └── ISSUES.md          # Known bugs to fix
 ├── docs/                   # Architecture documentation
-│   ├── adr/               # Architecture Decision Records
-│   ├── api/               # API documentation
-│   └── guides/            # Development guides
-├── tests/                  # Infrastructure tests
+│   └── (to be populated)
 ├── .gitignore
 ├── README.md              # This file
 └── pyproject.toml         # Project configuration
 ```
+
+**Navigation for New Claude Code Instances:**
+1. Read `.claude/CLAUDE.md` - Project overview and permissions
+2. Read `status/COMPLETED.md` - What's already built
+3. Read `plans/NEXT_STEPS.md` - What to do next
 
 ---
 
