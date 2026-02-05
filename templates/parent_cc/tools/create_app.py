@@ -282,7 +282,7 @@ from version_info._version_data import VERSION
 class {app_name.replace(" ", "")}(BaseApplication):
     """Simple counter app that requests help from Parent CC."""
 
-    def __init__(self, app_name: str = "{{app_name}}", app_version: str = "0.1.0", **kwargs):
+    def __init__(self, app_name: str = "{app_name}", app_version: str = "0.1.0", **kwargs):
         super().__init__(app_name=app_name, app_version=app_version, **kwargs)
         self.count = 0
 
@@ -375,7 +375,7 @@ from version_info._version_data import VERSION
 class {app_name.replace(" ", "")}(BaseApplication):
     """Simple logger app that communicates with other apps."""
 
-    def __init__(self, app_name: str = "{{app_name}}", app_version: str = "0.1.0", **kwargs):
+    def __init__(self, app_name: str = "{app_name}", app_version: str = "0.1.0", **kwargs):
         super().__init__(app_name=app_name, app_version=app_version, **kwargs)
 
         # Initialize Parent CC protocol
