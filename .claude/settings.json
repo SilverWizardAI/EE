@@ -51,8 +51,13 @@
   "hooks": {
     "SessionStart": [
       {
-        "type": "command",
-        "command": "echo '✨ Silver Wizard Software - Enterprise Architect Session Started - FULL AUTONOMY MODE'"
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '✨ Silver Wizard Software - Enterprise Architect Session Started - FULL AUTONOMY MODE'"
+          }
+        ]
       }
     ]
   }
