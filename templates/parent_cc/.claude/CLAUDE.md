@@ -102,7 +102,11 @@ python tools/create_app.py --name MyApp --template pyqt_app
 **Launch Apps:**
 ```bash
 # Spawn Claude instance for app
-python tools/launch_app.py --app MyApp
+python tools/launch_app.py \
+  --app MyApp \
+  --pcc-folder /path/to/pcc/folder \
+  --action launch \
+  --headless
 ```
 
 **Monitor Apps:**
@@ -348,7 +352,11 @@ python tools/create_app.py \
   --features counter,parent_cc_client,mm_mesh
 
 # Launch the app
-python tools/launch_app.py --app TestApp1
+python tools/launch_app.py \
+  --app TestApp1 \
+  --pcc-folder /path/to/pcc/folder \
+  --action launch \
+  --headless
 
 # Monitor its health
 python tools/registry.py --check-health TestApp1
