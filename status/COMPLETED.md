@@ -522,3 +522,61 @@ The PCC **autonomously** found all 4 template bugs, fixed them in real-time, and
 ---
 
 **Session Summary:** Silver Wizard architecture fully validated! MM Mesh has HA, Parent CC template is production-ready, and autonomous testing proved the entire concept works end-to-end.
+
+---
+
+## ✅ Session 2026-02-05 (Continued): Template Bug Fix from Re-testing
+
+### Critical Bug Fixed
+
+**Bug: VERSION Import Error**
+- **Discovered:** Re-testing Test_App_PCC (2nd validation run)
+- **Error:** `TypeError: create_application() missing 1 required positional argument: 'app_version'`
+
+**Root Cause:**
+Template used `from version_info import get_version` and called `get_version()` function, but `create_application()` expects a string value, not a function.
+
+**Fix Applied:**
+```python
+# Before (WRONG):
+from version_info import get_version
+sys.exit(create_application(TestApp1, "TestApp1", get_version()))
+
+# After (CORRECT):
+from version_info._version_data import VERSION
+sys.exit(create_application(TestApp1, "TestApp1", VERSION))
+```
+
+**Files Fixed:**
+- `templates/parent_cc/tools/create_app.py` (4 changes)
+  - Line 279: Counter app import
+  - Line 345: Counter app call
+  - Line 372: Logger app import
+  - Line 451: Logger app call
+
+**Validation:**
+- ✅ Apps now launch successfully
+- ✅ Version info displays correctly
+- ✅ No TypeError on startup
+
+**Commit:** `a42966c` - "fix: Use VERSION constant instead of get_version() function in templates"
+
+---
+
+### Issues Documented for Future Work
+
+**Issue #1: MM Mesh Service Registration (Medium)**
+- Apps connect as clients but don't auto-register as callable services
+- Impact: Peer-to-peer communication limited
+- Needs investigation and template enhancement
+
+**Issue #2: Health Check Not Implemented (Low)**
+- Health checks return "unknown" status
+- Impact: Can't monitor app health proactively
+- Needs health endpoint implementation
+
+**Documentation:** Updated `plans/ISSUES.md` with detailed tracking
+
+---
+
+**Key Lesson:** "Test until CLEAN" - User's retest caught bug that initial validation missed. Continuous validation is critical for production-ready infrastructure.
