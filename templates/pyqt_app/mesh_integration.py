@@ -149,11 +149,12 @@ class MeshIntegration(QObject):
             import httpx
 
             # Register with minimal info - apps are discoverable but not callable
+            # Note: Port 9999 is a placeholder - apps don't run MCP servers
             response = httpx.post(
                 f"http://{self.proxy_host}:{self.proxy_port}/register",
                 json={
                     "instance_name": self.instance_name,
-                    "port": 0,  # No MCP server port - app is a client only
+                    "port": 9999,  # Placeholder - apps are clients, not servers
                     "tools": []  # No tools exposed - communicate via Parent CC
                 },
                 timeout=5.0
