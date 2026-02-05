@@ -10,6 +10,12 @@ Architecture:
 - Reduces app bloat by moving edge case handling to Parent CC
 - Standardized protocol across all Silver Wizard apps
 
+HA Failover Handling:
+- Automatic retry logic via MeshIntegration
+- Handles Active/Standby switchover gracefully
+- Exponential backoff with jitter
+- Transparent to app logic
+
 Module Size Target: <400 lines (Current: ~350 lines)
 """
 

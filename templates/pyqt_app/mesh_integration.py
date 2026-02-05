@@ -2,17 +2,50 @@
 MM Mesh Integration
 
 Wrapper for MCP Mesh client with PyQt6 integration.
+Includes retry logic for HA failover handling.
 
-Module Size Target: <400 lines (Current: ~180 lines)
+Module Size Target: <400 lines (Current: ~250 lines)
 """
 
 import logging
+import sys
+from pathlib import Path
 from typing import Optional, Callable, List, Dict, Any
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+# Import retry logic
+ee_shared_path = Path(__file__).parent.parent.parent / "shared"
+if str(ee_shared_path) not in sys.path:
+    sys.path.insert(0, str(ee_shared_path))
+
+try:
+    from mm_client_retry import (
+        retry_on_failure,
+        RetryConfig,
+        RetryStrategy,
+        ConnectionError as RetryConnectionError,
+        TimeoutError as RetryTimeoutError,
+        ServiceUnavailableError,
+    )
+    RETRY_AVAILABLE = True
+except ImportError:
+    RETRY_AVAILABLE = False
+    logger.warning("Retry module not available - failover handling disabled")
+
 
 logger = logging.getLogger(__name__)
+
+
+# Default retry configuration for HA failover
+DEFAULT_RETRY_CONFIG = RetryConfig(
+    max_attempts=5,
+    base_delay=0.5,
+    max_delay=10.0,
+    strategy=RetryStrategy.EXPONENTIAL,
+    jitter=True,
+    backoff_factor=2.0,
+) if RETRY_AVAILABLE else None
 
 
 class MeshIntegration(QObject):
@@ -124,9 +157,57 @@ class MeshIntegration(QObject):
                 self._connected = False
                 self.disconnected.emit()
 
+    def _wrap_with_retry(self, func: Callable, *args, **kwargs):
+        """
+        Wrap a mesh client call with retry logic.
+
+        Handles HA failover scenarios with automatic retry.
+
+        Args:
+            func: Function to call
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Function result
+
+        Raises:
+            Exception: If all retries fail
+        """
+        if not RETRY_AVAILABLE:
+            # No retry available - call directly
+            return func(*args, **kwargs)
+
+        @retry_on_failure(
+            config=DEFAULT_RETRY_CONFIG,
+            on_retry=lambda attempt, exc: logger.info(
+                f"Retry attempt {attempt + 1} after {type(exc).__name__}: {exc}"
+            )
+        )
+        def _retryable_call():
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                # Map to retryable exceptions
+                error_str = str(e).lower()
+
+                if "connection" in error_str or "refused" in error_str:
+                    raise RetryConnectionError(str(e))
+                elif "timeout" in error_str:
+                    raise RetryTimeoutError(str(e))
+                elif "503" in error_str or "unavailable" in error_str:
+                    raise ServiceUnavailableError(str(e))
+                else:
+                    # Unknown error - let it propagate
+                    raise
+
+        return _retryable_call()
+
     def list_services(self) -> List[Dict[str, Any]]:
         """
         List all available services.
+
+        Automatically retries on failover-related failures.
 
         Returns:
             List of service info dictionaries
@@ -136,15 +217,17 @@ class MeshIntegration(QObject):
             return []
 
         try:
-            return self._client.list_services()
+            return self._wrap_with_retry(self._client.list_services)
         except Exception as e:
-            logger.error(f"Error listing services: {e}")
+            logger.error(f"Error listing services (all retries failed): {e}")
             self.error.emit(str(e))
             return []
 
     def get_service_info(self, service_name: str) -> Optional[Dict[str, Any]]:
         """
         Get info about a specific service.
+
+        Automatically retries on failover-related failures.
 
         Args:
             service_name: Service to query
@@ -157,9 +240,9 @@ class MeshIntegration(QObject):
             return None
 
         try:
-            return self._client.get_service_info(service_name)
+            return self._wrap_with_retry(self._client.get_service_info, service_name)
         except Exception as e:
-            logger.error(f"Error getting service info: {e}")
+            logger.error(f"Error getting service info (all retries failed): {e}")
             self.error.emit(str(e))
             return None
 
@@ -171,6 +254,8 @@ class MeshIntegration(QObject):
     ) -> Optional[Any]:
         """
         Call a tool on a remote service.
+
+        Automatically retries on failover-related failures.
 
         Args:
             service_name: Service to call
@@ -185,11 +270,16 @@ class MeshIntegration(QObject):
             return None
 
         try:
-            result = self._client.call_service(service_name, tool_name, arguments)
+            result = self._wrap_with_retry(
+                self._client.call_service,
+                service_name,
+                tool_name,
+                arguments
+            )
             logger.debug(f"Called {service_name}.{tool_name}: success")
             return result
         except Exception as e:
-            logger.error(f"Error calling {service_name}.{tool_name}: {e}")
+            logger.error(f"Error calling {service_name}.{tool_name} (all retries failed): {e}")
             self.error.emit(str(e))
             return None
 
