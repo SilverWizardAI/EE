@@ -114,6 +114,88 @@ def create_app_from_template(
     return app_folder
 
 
+def _customize_claude_config(app_folder: Path, app_name: str, features: List[str]):
+    """
+    Customize .claude/ configuration for the app's Claude instance.
+
+    Args:
+        app_folder: App folder path
+        app_name: App name
+        features: List of features enabled
+    """
+    claude_dir = app_folder / ".claude"
+    if not claude_dir.exists():
+        logger.warning(f"No .claude directory in template for {app_name}")
+        return
+
+    # Get PCC context
+    pcc_folder = app_folder.parent.parent  # apps/AppName -> apps -> PCC
+    pcc_name = pcc_folder.name
+
+    # Customize CLAUDE.md
+    claude_md_template = claude_dir / "CLAUDE.md.template"
+    claude_md = claude_dir / "CLAUDE.md"
+
+    if claude_md_template.exists():
+        content = claude_md_template.read_text()
+
+        # Replace placeholders
+        content = content.replace("{APP_NAME}", app_name)
+        content = content.replace("{PCC_NAME}", pcc_name)
+        content = content.replace("{MESH_SERVICE}", app_name.lower().replace(" ", "_"))
+        content = content.replace("{CREATED_DATE}", datetime.now().isoformat())
+
+        # Build features description
+        features_desc = _build_features_description(features)
+        content = content.replace("{FEATURES_DESCRIPTION}", features_desc)
+
+        # Write customized CLAUDE.md
+        claude_md.write_text(content)
+
+        # Remove template file
+        claude_md_template.unlink()
+
+        logger.info(f"✓ Customized .claude/CLAUDE.md for {app_name}")
+    else:
+        logger.warning(f"No CLAUDE.md.template found for {app_name}")
+
+    # settings.local.json is already correct, no need to customize
+    logger.info(f"✓ .claude/ configuration ready for {app_name}")
+
+
+def _build_features_description(features: List[str]) -> str:
+    """
+    Build human-readable description of enabled features.
+
+    Args:
+        features: List of feature names
+
+    Returns:
+        Formatted feature description
+    """
+    if not features:
+        return "- Standard PyQt6 application (no additional features)"
+
+    descriptions = []
+
+    feature_map = {
+        "counter": "- **Counter**: Simple increment/decrement counter with UI",
+        "logger": "- **Logger**: Event logging and log display functionality",
+        "parent_cc_client": "- **Parent CC Client**: Request assistance from Parent CC",
+        "mm_mesh": "- **MM Mesh**: Register and communicate with other apps",
+        "settings": "- **Settings**: User preferences and configuration management",
+        "database": "- **Database**: SQLite database integration",
+    }
+
+    for feature in features:
+        if feature in feature_map:
+            descriptions.append(feature_map[feature])
+        else:
+            descriptions.append(f"- **{feature.title()}**: Custom feature")
+
+    return "\n".join(descriptions)
+
+
 def _customize_app(app_folder: Path, app_name: str, features: List[str]):
     """
     Customize app files with app-specific information.
@@ -139,6 +221,9 @@ def _customize_app(app_folder: Path, app_name: str, features: List[str]):
         content = content.replace("PyQt6 Application Template", app_name)
         content = content.replace("My App", app_name)
         readme_file.write_text(content)
+
+    # Customize .claude/ directory for Claude instance
+    _customize_claude_config(app_folder, app_name, features)
 
     # Create main.py if features include specific app types
     if "counter" in features:

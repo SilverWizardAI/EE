@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(python3 -c:*)",
+      "Bash(python3 -m:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(ps:*)",
+      "Bash(curl:*)",
+      "Write(*)",
+      "Edit(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ]
+  }
+}
