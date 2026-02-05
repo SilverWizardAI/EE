@@ -135,10 +135,37 @@ class MeshIntegration(QObject):
             self.connected.emit()
             logger.info(f"✓ Connected to mesh proxy ({len(services)} services)")
 
+            # Register this app as a discoverable service
+            self._register_service()
+
         except Exception as e:
             logger.warning(f"Mesh not available: {e}")
             self._client = None
             self._connected = False
+
+    def _register_service(self):
+        """Register this app with the mesh proxy for discoverability."""
+        try:
+            import httpx
+
+            # Register with minimal info - apps are discoverable but not callable
+            response = httpx.post(
+                f"http://{self.proxy_host}:{self.proxy_port}/register",
+                json={
+                    "instance_name": self.instance_name,
+                    "port": 0,  # No MCP server port - app is a client only
+                    "tools": []  # No tools exposed - communicate via Parent CC
+                },
+                timeout=5.0
+            )
+
+            if response.status_code == 200:
+                logger.info(f"✓ Registered with mesh: {self.instance_name}")
+            else:
+                logger.warning(f"Failed to register: HTTP {response.status_code}")
+
+        except Exception as e:
+            logger.warning(f"Could not register with mesh: {e}")
 
     def is_available(self) -> bool:
         """Check if mesh is available."""
