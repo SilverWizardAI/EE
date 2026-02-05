@@ -14,6 +14,8 @@ from typing import Optional, Callable, List, Dict, Any
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+logger = logging.getLogger(__name__)
+
 # Import retry logic
 ee_shared_path = Path(__file__).parent.parent.parent / "shared"
 if str(ee_shared_path) not in sys.path:
@@ -32,9 +34,6 @@ try:
 except ImportError:
     RETRY_AVAILABLE = False
     logger.warning("Retry module not available - failover handling disabled")
-
-
-logger = logging.getLogger(__name__)
 
 
 # Default retry configuration for HA failover

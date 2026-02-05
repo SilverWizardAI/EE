@@ -14,7 +14,7 @@ Module Size Target: <400 lines (Current: ~220 lines)
 
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 
 logger = logging.getLogger(__name__)
