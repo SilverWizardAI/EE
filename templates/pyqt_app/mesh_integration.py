@@ -174,13 +174,15 @@ class MeshIntegration(QObject):
     def _start_heartbeat(self):
         """Start periodic heartbeat to keep service alive in mesh."""
         if not self.is_available():
+            logger.warning(f"Cannot start heartbeat - mesh not available for {self.instance_name}")
             return
 
         # Create QTimer for heartbeat (30 second interval)
-        self._heartbeat_timer = QTimer()
+        # IMPORTANT: Parent to self so timer is part of Qt event loop
+        self._heartbeat_timer = QTimer(self)
         self._heartbeat_timer.timeout.connect(self._send_heartbeat)
         self._heartbeat_timer.start(30000)  # 30 seconds
-        logger.info(f"Heartbeat started for {self.instance_name} (30s interval)")
+        logger.info(f"✓ Heartbeat started for {self.instance_name} (30s interval)")
 
     def _send_heartbeat(self):
         """Send heartbeat to mesh proxy."""

@@ -299,7 +299,22 @@ class BaseApplication(QMainWindow):
 
 
 def create_application(app_class, app_name: str, app_version: str, **kwargs) -> int:
-    """Standard application entry point."""
+    """
+    Standard application entry point.
+
+    Supports both GUI and headless modes via --headless flag.
+    Handles SIGTERM/SIGINT for graceful shutdown.
+    """
+    import signal
+    import argparse
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--headless', action='store_true', help='Run in headless mode')
+    args, remaining = parser.parse_known_args()
+
+    # Create QApplication with remaining args
+    sys.argv = [sys.argv[0]] + remaining
     app = QApplication(sys.argv)
     app.setOrganizationName("Silver Wizard Software")
     app.setApplicationName(app_name)
@@ -312,6 +327,42 @@ def create_application(app_class, app_name: str, app_version: str, **kwargs) -> 
     except ImportError:
         logger.info("ℹ PQTI instrumentation not available")
 
+    # Create application window
     window = app_class(app_name=app_name, app_version=app_version, **kwargs)
-    window.show()
-    return app.exec()
+
+    # Show window only in GUI mode
+    if not args.headless:
+        window.show()
+        logger.info(f"✓ {app_name} window shown (GUI mode)")
+    else:
+        logger.info(f"✓ {app_name} running in headless mode")
+
+    # Install signal handlers for graceful shutdown
+    # Use a flag that Qt can check periodically
+    shutdown_requested = {'value': False}
+
+    def signal_handler(signum, frame):
+        """Handle SIGTERM/SIGINT gracefully."""
+        signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+        logger.info(f"Received {signal_name}, requesting shutdown...")
+        shutdown_requested['value'] = True
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Create timer to check for shutdown requests
+    # This allows Python signal handlers to run within Qt event loop
+    def check_shutdown():
+        if shutdown_requested['value']:
+            logger.info("Shutting down gracefully...")
+            window.close()
+            app.quit()
+
+    shutdown_timer = QTimer()
+    shutdown_timer.timeout.connect(check_shutdown)
+    shutdown_timer.start(100)  # Check every 100ms
+
+    # Run event loop (works in both GUI and headless modes)
+    result = app.exec()
+    shutdown_timer.stop()
+    return result
