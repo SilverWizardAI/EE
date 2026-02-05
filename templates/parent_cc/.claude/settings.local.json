@@ -1,32 +1,29 @@
 {
-  "tool_permissions": {
-    "Bash": {
-      "mode": "auto_approve",
-      "scope": "folder"
-    },
-    "Read": {
-      "mode": "auto_approve"
-    },
-    "Write": {
-      "mode": "auto_approve",
-      "scope": "folder"
-    },
-    "Edit": {
-      "mode": "auto_approve",
-      "scope": "folder"
-    },
-    "Glob": {
-      "mode": "auto_approve"
-    },
-    "Grep": {
-      "mode": "auto_approve"
-    },
-    "Task": {
-      "mode": "auto_approve"
-    }
-  },
-  "git": {
-    "auto_commit": false,
-    "commit_message_template": "feat: {description}\n\nCo-Authored-By: {pcc_name} <noreply@anthropic.com>"
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(python3 tools/*:*)",
+      "Bash(git:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(curl:*)",
+      "Bash(ps:*)",
+      "Bash(kill:*)",
+      "Write(*)",
+      "Edit(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Task(*)"
+    ]
   }
 }
