@@ -16,6 +16,37 @@ This template creates a fully autonomous Parent CC instance that can:
 
 ---
 
+## Prerequisites
+
+### Required Libraries
+
+This template uses centralized Silver Wizard libraries:
+- **sw_core** - Core infrastructure (base application, mesh integration, etc.)
+- **sw_pcc** - PCC-specific tools (registry, app creation, launcher)
+
+Both libraries must be available on Python path before using this template.
+
+### Installation
+
+**Option 1: Manual .pth file (Recommended)**
+```bash
+echo "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/EE/shared" > \
+  /opt/homebrew/lib/python3.13/site-packages/_sw_manual.pth
+```
+
+**Option 2: pip install -e (Editable installs)**
+```bash
+cd /path/to/EE/shared/sw_core && pip install -e .
+cd /path/to/EE/shared/sw_pcc && pip install -e .
+```
+
+**Verify Installation:**
+```bash
+python3 -c "import sw_core, sw_pcc; print('✓ Libraries installed')"
+```
+
+---
+
 ## Quick Start
 
 ### 1. Create New Parent CC Instance
@@ -141,6 +172,8 @@ parent_cc/
 ---
 
 ## Tools
+
+**Architecture Note:** All tools are lightweight wrappers that import from centralized libraries (sw_core and sw_pcc). This ensures single source of truth and eliminates code duplication across Parent CC instances.
 
 ### registry.py
 

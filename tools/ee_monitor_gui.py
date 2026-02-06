@@ -18,13 +18,15 @@ import json
 import sys
 import subprocess
 import time
+import threading
 from pathlib import Path
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QTextEdit, QGroupBox, QPushButton, QSpinBox, QMessageBox
 )
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QTextCursor
 
 try:
@@ -49,6 +51,79 @@ if mm_path.exists():
 else:
     MESH_CLIENT_AVAILABLE = False
     MeshClient = None
+
+
+class EEMSignals(QObject):
+    """Signals for thread-safe GUI updates."""
+    message_received = pyqtSignal(str, str, dict)  # service, method, payload
+
+
+class EEMRequestHandler(BaseHTTPRequestHandler):
+    """HTTP handler for incoming messages to EEM."""
+
+    window = None  # Will be set by EEMonitorWindow
+
+    def log_message(self, format, *args):
+        """Suppress default HTTP logging."""
+        pass
+
+    def do_POST(self):
+        """Handle tool calls - MM proxy routes by path /tools/{tool_name}."""
+        try:
+            # Parse tool name from path
+            tool_name = self.path.split('/')[-1] if self.path.startswith('/tools/') else 'unknown'
+
+            # Read arguments from body
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            args = json.loads(body) if body else {}
+
+            # Handle tools
+            if tool_name == "log_message" and self.window:
+                message = args.get("message", "")
+                # Log via window (thread-safe)
+                self.window.log_mm_receive("external", "log_message", {"message": message})
+
+                response = {
+                    "content": [{
+                        "type": "text",
+                        "text": f"✅ EEM received: {message}"
+                    }]
+                }
+            elif tool_name == "end_cycle" and self.window:
+                # End current cycle and start new one
+                cycle_num = self.window.current_cycle
+                self.window.log_mm_receive("external", "end_cycle", args)
+                self.window.log_info(f"🔴 Cycle {cycle_num} ending - starting new cycle...")
+
+                # Terminate current EE terminal and start new cycle
+                # Use QTimer to run in GUI thread
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.window._handle_cycle_end_and_restart())
+
+                response = {
+                    "content": [{
+                        "type": "text",
+                        "text": f"✅ Cycle {cycle_num} ended, starting Cycle {cycle_num + 1}"
+                    }]
+                }
+            else:
+                response = {
+                    "content": [{
+                        "type": "text",
+                        "text": f"Unknown tool: {tool_name}"
+                    }]
+                }
+
+            # Send response
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
 
 
 class EEMonitorWindow(QMainWindow):
@@ -107,6 +182,28 @@ class EEMonitorWindow(QMainWindow):
             if not HTTPX_AVAILABLE:
                 reasons.append("httpx not available")
             self.log_to_file(f"EEM: ⚠️ MM mesh integration disabled: {', '.join(reasons)}\n")
+
+        # Start HTTP server to receive messages
+        self.httpd = None
+        if HTTPX_AVAILABLE and self._check_mm_running():
+            try:
+                self.httpd = HTTPServer(('localhost', 9999), EEMRequestHandler)
+                EEMRequestHandler.window = self  # Pass reference to handler
+                server_thread = threading.Thread(
+                    target=self.httpd.serve_forever,
+                    daemon=True,
+                    name="EEM-HTTPServer"
+                )
+                server_thread.start()
+                self.log_to_file("EEM: ✅ HTTP server started on port 9999")
+
+                # Register with MM mesh
+                if self._register_with_mm():
+                    self.log_to_file("EEM: ✅ Ready to receive messages via MM mesh")
+                else:
+                    self.log_to_file("EEM: ⚠️ Registration with MM mesh failed")
+            except Exception as e:
+                self.log_to_file(f"EEM: ❌ Failed to start HTTP server: {e}")
 
         self.init_ui()
 
@@ -381,24 +478,17 @@ class EEMonitorWindow(QMainWindow):
                 "http://localhost:6001/register",
                 json={
                     "instance_name": "ee_monitor",
-                    "port": 9998,
-                    "tools": [
-                        {
-                            "name": "log_message",
-                            "description": "Log message to monitor",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "message": {"type": "string"}
-                                },
-                                "required": ["message"]
-                            }
-                        }
-                    ]
+                    "port": 9999,  # Different port from test monitor
+                    "tools": ["log_message", "end_cycle"]  # Use strings, not objects!
                 },
                 timeout=5.0
             )
-            return response.status_code == 200
+            if response.status_code == 200:
+                self.log_to_file("EEM: ✅ Registered with MM mesh as 'ee_monitor'")
+                return True
+            else:
+                self.log_to_file(f"EEM: Registration failed: {response.status_code}")
+                return False
         except Exception as e:
             self.log_to_file(f"EEM: Registration error: {e}")
             return False
@@ -515,6 +605,37 @@ class EEMonitorWindow(QMainWindow):
         self.ee_instance_name = None
         self.ee_terminal_id = None
         self.last_status = {}
+
+    def _handle_cycle_end_and_restart(self):
+        """Handle cycle end and automatically start next cycle."""
+        try:
+            # Log cycle end
+            self.log_info(f"🔴 Ending Cycle {self.current_cycle}")
+
+            # Stop heartbeat
+            self.heartbeat_timer.stop()
+
+            # Terminate current terminal
+            if self.ee_terminal_id:
+                self._terminate_ee_terminal()
+                time.sleep(1)  # Give it time to close
+
+            # Increment cycle
+            self.current_cycle += 1
+            self.cycle_label.setText(f"Cycle: {self.current_cycle}")
+
+            # Reset state
+            self.ee_instance_name = None
+            self.ee_terminal_id = None
+            self.last_status = {}
+
+            # Start new cycle
+            self.log_info(f"🚀 Starting Cycle {self.current_cycle}")
+            tm = get_terminal_manager()
+            self._spawn_new_cycle(tm)
+
+        except Exception as e:
+            self.log_error(f"Failed to end cycle and restart: {e}")
 
     def _terminate_ee_terminal(self):
         """Terminate the EE terminal before starting new cycle."""

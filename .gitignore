@@ -57,12 +57,15 @@ site/
 *.pem
 secrets/
 .claude/settings.local.json
+.claude/ee-claude.pid
 
 # Temporary Files
 *.log
 *.tmp
 temp/
 tmp/
+logs/
+apps/
 
 # OS
 .DS_Store
