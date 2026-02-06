@@ -209,8 +209,23 @@ class TerminalManager:
         # CRITICAL: Must wait for actual prompt, not just terminal spawn
         time.sleep(8.0)  # 8 seconds to ensure CC is fully ready
 
-        # AppleScript to type the command and press Enter
-        # CRITICAL: Long commands can have keystroke drops - break into chunks
+        # CRITICAL: Use clipboard method for multi-line commands
+        # AppleScript keystroke cannot handle newlines in string literals
+        try:
+            # Step 1: Copy command to clipboard using pbcopy
+            subprocess.run(
+                ['pbcopy'],
+                input=command.encode('utf-8'),
+                check=True,
+                timeout=5
+            )
+            logger.debug(f"[TerminalManager] Command copied to clipboard ({len(command)} chars)")
+
+        except Exception as e:
+            logger.error(f"[TerminalManager] Failed to copy to clipboard: {e}")
+            return
+
+        # Step 2: AppleScript to paste and submit
         inject_script = f'''
         tell application "Terminal"
             -- Activate the specific terminal window
@@ -222,10 +237,10 @@ class TerminalManager:
         delay 0.5
 
         tell application "System Events"
-            -- Type the command
-            keystroke "{command}"
+            -- Paste the command (Cmd+V)
+            keystroke "v" using command down
 
-            -- CRITICAL: Longer delay before Enter to ensure full text is buffered
+            -- CRITICAL: Longer delay before Enter to ensure full text is pasted
             delay 0.5
 
             -- Press Enter to submit
