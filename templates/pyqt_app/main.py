@@ -5,7 +5,9 @@ Template main.py - customize for your application.
 """
 
 import sys
+from pathlib import Path
 from PyQt6.QtWidgets import QVBoxLayout, QLabel
+from PyQt6.QtGui import QIcon
 
 from sw_core.base_application import BaseApplication, create_application
 from sw_core.parent_cc_protocol import ParentCCProtocol
@@ -17,6 +19,11 @@ class {APP_NAME}(BaseApplication):
 
     def __init__(self, app_name: str = "{APP_NAME}", app_version: str = "0.1.0", **kwargs):
         super().__init__(app_name=app_name, app_version=app_version, **kwargs)
+
+        # Set application icon
+        icon_path = Path(__file__).parent / "app_icon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         # Initialize Parent CC protocol
         self.protocol = ParentCCProtocol(
