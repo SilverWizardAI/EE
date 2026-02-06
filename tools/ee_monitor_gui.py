@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-EE Monitor GUI - Real-time EE Instance Monitor
+EE Monitor GUI - Communications Logging Version
 
-Displays EE cycle status in a compact GUI for split-screen monitoring.
-Shows cycle count, token usage, current task, and handoff alerts.
+60% screen = Communications log (scrollable, file-backed)
+40% screen = Control panel (START, token target, status)
 
-Run alongside EE in right half of screen while EE works in left half.
-
-Module Size Target: <400 lines (Current: ~380 lines)
+Logs ALL communications to screen + file
+Module Size: ~550 lines
 """
 
 import json
@@ -16,686 +15,360 @@ from pathlib import Path
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QProgressBar, QTextEdit, QGroupBox, QPushButton, QSpinBox
+    QLabel, QTextEdit, QGroupBox, QPushButton, QSpinBox, QMessageBox
 )
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QPalette, QColor
-import sys
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QFont, QTextCursor
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from sw_core import get_terminal_manager
 
 
 class EEMonitorWindow(QMainWindow):
-    """
-    Real-time EE instance monitor.
-
-    Displays:
-    - Total cycle count
-    - Current cycle status
-    - Token usage with visual indicator
-    - Task progress
-    - Handoff alerts
-    """
+    """EE Monitor with comprehensive communications logging."""
 
     def __init__(self, ee_root: Path):
         super().__init__()
 
         self.ee_root = ee_root
-        self.status_file = ee_root / "status" / "EE_CYCLE_STATUS.json"
-        self.handoff_file = ee_root / "status" / "HANDOFF_SIGNAL.txt"
-        self.cycle_reports_file = ee_root / "status" / "cycle_reports.log"
-        self.config_file = ee_root / "status" / "ee_config.json"
+        self.next_steps_file = ee_root / "plans" / "NextSteps.md"
+        self.current_cycle = 1  # App tracks cycle number
 
-        self.last_cycle = None
-        self.total_cycles = 0
-        self.handoff_detected = False
-        self.last_report_size = 0  # Track log file size to detect new entries
+        # Setup file logging
+        self.log_dir = ee_root / "logs"
+        self.log_dir.mkdir(exist_ok=True)
 
-        # Load or create config
-        self.config = self.load_config()
+        today = datetime.now().strftime("%Y%m%d")
+        self.log_file = self.log_dir / f"ee_monitor_{today}.log"
+        self.log_fh = open(self.log_file, 'a', encoding='utf-8')
+        
+        self.log_to_file(f"{'='*60}")
+        self.log_to_file(f"EE Monitor started at {datetime.now().isoformat()}")
+        self.log_to_file(f"{'='*60}\n")
 
         self.init_ui()
-        self.start_monitoring()
+
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self.check_ee_status)
+        self.monitor_timer.start(5000)
+
+    def closeEvent(self, event):
+        self.log_to_file(f"\n{'='*60}")
+        self.log_to_file(f"EE Monitor closed")
+        self.log_to_file(f"{'='*60}\n")
+        if hasattr(self, 'log_fh'):
+            self.log_fh.close()
+        event.accept()
+
+    def log_to_file(self, text: str):
+        self.log_fh.write(f"{text}\n")
+        self.log_fh.flush()
 
     def init_ui(self):
-        """Initialize the user interface."""
-        self.setWindowTitle("🏛️ EE Monitor - Autonomous Operation")
-        self.setGeometry(100, 100, 700, 900)
+        self.setWindowTitle("🏛️ EE Monitor")
+        self.setGeometry(100, 100, 900, 1000)
 
-        # Central widget
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
 
         # Title
-        title = QLabel("🏛️ Enterprise Edition Monitor")
-        title.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        title = QLabel("🏛️ EE Monitor")
+        title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        subtitle = QLabel("Autonomous Multi-Cycle Operation")
-        subtitle.setFont(QFont("Arial", 10))
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #666;")
-        layout.addWidget(subtitle)
-
-        # START BUTTON (TOP - MOST VISIBLE)
+        # START BUTTON
         self.start_btn = QPushButton("🚀 START CYCLE 🚀")
-        self.start_btn.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        self.start_btn.setMinimumHeight(80)
+        self.start_btn.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        self.start_btn.setMinimumHeight(70)
         self.start_btn.setStyleSheet("""
             QPushButton {
                 background-color: #FF0000;
                 color: white;
                 padding: 20px;
                 border-radius: 10px;
-                font-size: 20px;
             }
-            QPushButton:hover {
-                background-color: #CC0000;
-            }
+            QPushButton:hover { background-color: #CC0000; }
         """)
         self.start_btn.clicked.connect(self.start_cycle)
         layout.addWidget(self.start_btn)
 
-        # Cycle Counter (Prominent)
-        cycle_group = QGroupBox("Instance Cycles")
-        cycle_layout = QVBoxLayout()
+        # Token Target
+        control_group = QGroupBox("⚙️ Configuration")
+        control_layout = QHBoxLayout()
+        
+        token_label = QLabel("Token Target %:")
+        token_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        control_layout.addWidget(token_label)
 
-        self.cycle_counter = QLabel("0")
-        self.cycle_counter.setFont(QFont("Arial", 48, QFont.Weight.Bold))
-        self.cycle_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cycle_counter.setStyleSheet("color: #2196F3; padding: 20px;")
-        cycle_layout.addWidget(self.cycle_counter)
+        self.token_target_spinbox = QSpinBox()
+        self.token_target_spinbox.setMinimum(20)
+        self.token_target_spinbox.setMaximum(95)
+        self.token_target_spinbox.setValue(85)
+        self.token_target_spinbox.setSuffix("%")
+        control_layout.addWidget(self.token_target_spinbox)
+        
+        control_layout.addStretch()
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
 
-        self.cycle_label = QLabel("Total EE Instances Spawned")
-        self.cycle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cycle_label.setStyleSheet("color: #666; font-size: 11pt;")
-        cycle_layout.addWidget(self.cycle_label)
-
-        cycle_group.setLayout(cycle_layout)
-        layout.addWidget(cycle_group)
-
-        # Current Status
+        # Status
         status_group = QGroupBox("Current Status")
         status_layout = QVBoxLayout()
 
-        self.current_cycle_label = QLabel("Cycle: -")
-        self.current_cycle_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        status_layout.addWidget(self.current_cycle_label)
+        self.cycle_label = QLabel("Cycle: 1")
+        self.cycle_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        status_layout.addWidget(self.cycle_label)
 
-        self.task_label = QLabel("Task: No active task")
-        self.task_label.setWordWrap(True)
-        self.task_label.setFont(QFont("Arial", 10))
-        status_layout.addWidget(self.task_label)
-
-        self.started_label = QLabel("Started: -")
-        self.started_label.setStyleSheet("color: #666; font-size: 9pt;")
-        status_layout.addWidget(self.started_label)
+        self.step_label = QLabel("Step: Waiting")
+        status_layout.addWidget(self.step_label)
 
         status_group.setLayout(status_layout)
         layout.addWidget(status_group)
 
-        # Configuration Panel
-        config_group = QGroupBox("⚙️ Configuration")
-        config_layout = QVBoxLayout()
+        # Communications Log (60%)
+        log_group = QGroupBox("📡 Communications Log")
+        log_layout = QVBoxLayout()
 
-        # Threshold control
-        threshold_row = QHBoxLayout()
-        threshold_label = QLabel("Handoff Threshold:")
-        threshold_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        threshold_row.addWidget(threshold_label)
-
-        self.threshold_spinbox = QSpinBox()
-        self.threshold_spinbox.setMinimum(20)
-        self.threshold_spinbox.setMaximum(95)
-        self.threshold_spinbox.setValue(self.config.get('handoff_threshold_percent', 20))
-        self.threshold_spinbox.setSuffix("%")
-        self.threshold_spinbox.setFont(QFont("Arial", 11))
-        self.threshold_spinbox.setStyleSheet("padding: 5px;")
-        self.threshold_spinbox.valueChanged.connect(self.on_threshold_changed)
-        threshold_row.addWidget(self.threshold_spinbox)
-
-        threshold_tokens = QLabel()
-        threshold_tokens.setStyleSheet("color: #666; font-size: 9pt;")
-        self.threshold_tokens_label = threshold_tokens
-        self.update_threshold_label()
-        threshold_row.addWidget(threshold_tokens)
-
-        threshold_row.addStretch()
-        config_layout.addLayout(threshold_row)
-
-        config_help = QLabel("💡 Set to 20% for testing, 50%+ for production")
-        config_help.setStyleSheet("color: #666; font-size: 9pt; font-style: italic;")
-        config_layout.addWidget(config_help)
-
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group)
-
-        # Token Usage
-        token_group = QGroupBox("Token Budget")
-        token_layout = QVBoxLayout()
-
-        self.token_label = QLabel("Usage: - / 200,000")
-        self.token_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        token_layout.addWidget(self.token_label)
-
-        self.token_bar = QProgressBar()
-        self.token_bar.setMinimum(0)
-        self.token_bar.setMaximum(100)
-        self.token_bar.setValue(0)
-        self.token_bar.setTextVisible(True)
-        self.token_bar.setFormat("%p%")
-        self.token_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #ccc;
-                border-radius: 5px;
-                text-align: center;
-                height: 25px;
-            }
-            QProgressBar::chunk {
-                background-color: #4CAF50;
-                border-radius: 3px;
-            }
-        """)
-        token_layout.addWidget(self.token_bar)
-
-        self.token_status = QLabel("✅ HEALTHY")
-        self.token_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.token_status.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        token_layout.addWidget(self.token_status)
-
-        token_group.setLayout(token_layout)
-        layout.addWidget(token_group)
-
-        # Completed Tasks
-        tasks_group = QGroupBox("Progress")
-        tasks_layout = QVBoxLayout()
-
-        self.tasks_display = QTextEdit()
-        self.tasks_display.setReadOnly(True)
-        self.tasks_display.setMaximumHeight(100)
-        self.tasks_display.setStyleSheet("""
+        self.comms_log = QTextEdit()
+        self.comms_log.setReadOnly(True)
+        self.comms_log.setMinimumHeight(550)
+        self.comms_log.setStyleSheet("""
             QTextEdit {
-                background-color: #f5f5f5;
-                border: 1px solid #ddd;
-                border-radius: 3px;
-                padding: 5px;
-                font-family: monospace;
-                font-size: 9pt;
-            }
-        """)
-        tasks_layout.addWidget(self.tasks_display)
-
-        tasks_group.setLayout(tasks_layout)
-        layout.addWidget(tasks_group)
-
-        # Cycle Reports Log
-        reports_group = QGroupBox("Cycle Reports Log")
-        reports_layout = QVBoxLayout()
-
-        self.reports_display = QTextEdit()
-        self.reports_display.setReadOnly(True)
-        self.reports_display.setMaximumHeight(100)
-        self.reports_display.setStyleSheet("""
-            QTextEdit {
-                background-color: #2b2b2b;
-                color: #00ff00;
-                border: 1px solid #444;
-                border-radius: 3px;
-                padding: 8px;
+                background-color: #1e1e1e;
+                color: #d4d4d4;
                 font-family: 'Courier New', monospace;
-                font-size: 9pt;
+                font-size: 10pt;
+                padding: 10px;
             }
         """)
-        reports_layout.addWidget(self.reports_display)
+        log_layout.addWidget(self.comms_log)
 
-        reports_group.setLayout(reports_layout)
-        layout.addWidget(reports_group)
+        clear_btn = QPushButton("🗑️ Clear Screen Log")
+        clear_btn.clicked.connect(self.clear_screen_log)
+        log_layout.addWidget(clear_btn)
 
-        # Next Action
-        next_group = QGroupBox("Next Action")
-        next_layout = QVBoxLayout()
+        log_group.setLayout(log_layout)
+        layout.addWidget(log_group)
 
-        self.next_label = QLabel("Waiting for status...")
-        self.next_label.setWordWrap(True)
-        self.next_label.setFont(QFont("Arial", 10))
-        self.next_label.setStyleSheet("padding: 10px; background-color: #fff3cd; border-radius: 3px;")
-        next_layout.addWidget(self.next_label)
+        self.log_info("EE Monitor started")
+        self.log_info(f"Log file: {self.log_file}")
 
-        next_group.setLayout(next_layout)
-        layout.addWidget(next_group)
+    # Logging methods
+    def log_terminal_inject(self, command: str, prompt: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Handoff Alert (Hidden by default)
-        self.handoff_alert = QLabel("🔄 HANDOFF IN PROGRESS")
-        self.handoff_alert.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.handoff_alert.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        self.handoff_alert.setStyleSheet("""
-            background-color: #ff9800;
-            color: white;
-            padding: 15px;
-            border-radius: 5px;
-        """)
-        self.handoff_alert.hide()
-        layout.addWidget(self.handoff_alert)
+        html = f'<span style="color:#3b82f6;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | TERMINAL INJECT</span><br>'
+        html += f'<span style="color:#60a5fa;">  {command}</span><br>'
+        html += f'<span style="color:#60a5fa;">  {prompt[:100]}...</span><br><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
 
-        # Last Update
-        self.update_time_label = QLabel("Last update: Never")
-        self.update_time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.update_time_label.setStyleSheet("color: #999; font-size: 8pt; margin-top: 10px;")
-        layout.addWidget(self.update_time_label)
+        self.log_to_file(f"[{full_ts}] CYCLE {self.current_cycle} | TERMINAL INJECT")
+        self.log_to_file(f"Command: {command}")
+        self.log_to_file(f"Prompt: {prompt}\n")
 
-        # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.clicked.connect(self.update_status)
-        layout.addWidget(refresh_btn)
+    def log_mm_send(self, service: str, method: str, payload: dict):
+        ts = datetime.now().strftime("%H:%M:%S")
+        full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    def load_config(self) -> dict:
-        """Load configuration from file."""
-        default_config = {
-            'handoff_threshold_percent': 20,  # Default 20% for testing
-            'token_budget': 200000
-        }
+        html = f'<span style="color:#8b5cf6;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | MM SEND</span><br>'
+        html += f'<span style="color:#a78bfa;">  {json.dumps(payload)}</span><br><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
 
-        if not self.config_file.exists():
-            # Create default config
-            self.save_config(default_config)
-            return default_config
+        self.log_to_file(f"[{full_ts}] CYCLE {self.current_cycle} | MM SEND → {service}.{method}")
+        self.log_to_file(f"Payload: {json.dumps(payload)}\n")
 
-        try:
-            with open(self.config_file, 'r') as f:
-                return json.load(f)
-        except:
-            return default_config
+    def log_mm_receive(self, service: str, method: str, payload: dict):
+        ts = datetime.now().strftime("%H:%M:%S")
+        full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    def save_config(self, config: dict):
-        """Save configuration to file."""
-        try:
-            with open(self.config_file, 'w') as f:
-                json.dump(config, f, indent=2)
-        except Exception as e:
-            print(f"Error saving config: {e}")
+        display_msg = payload.get("message", "")
 
-    def on_threshold_changed(self, value: int):
-        """Handle threshold change."""
-        self.config['handoff_threshold_percent'] = value
-        self.save_config(self.config)
-        self.update_threshold_label()
+        html = f'<span style="color:#10b981;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | MM RECV</span><br>'
+        if display_msg:
+            html += f'<span style="color:#34d399;font-weight:bold;">  → {display_msg}</span><br>'
+        html += f'<span style="color:#34d399;">  {json.dumps(payload)}</span><br><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
 
-    def update_threshold_label(self):
-        """Update the threshold tokens label."""
-        percent = self.config.get('handoff_threshold_percent', 20)
-        budget = self.config.get('token_budget', 200000)
-        threshold_tokens = int((percent / 100) * budget)
-        self.threshold_tokens_label.setText(f"({threshold_tokens:,} tokens)")
+        self.log_to_file(f"[{full_ts}] CYCLE {self.current_cycle} | MM RECV ← {service}.{method}")
+        self.log_to_file(f"Payload: {json.dumps(payload)}")
+        if display_msg:
+            self.log_to_file(f"Display: {display_msg}")
+        self.log_to_file("")
 
-    def start_monitoring(self):
-        """Start the monitoring timer."""
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_status)
-        self.timer.start(2000)  # Update every 2 seconds
+    def log_end_of_cycle(self, cycle: int, last_step: int, next_step: int,
+                         total_steps: int, tokens_used: int, tokens_limit: int):
+        ts = datetime.now().strftime("%H:%M:%S")
+        full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        pct = (tokens_used / tokens_limit) * 100
 
-        # Handoff monitoring timer
-        self.handoff_timer = QTimer()
-        self.handoff_timer.timeout.connect(self.check_and_spawn)
-        self.handoff_timer.start(3000)  # Check every 3 seconds
+        html = f'<span style="color:#f59e0b;font-weight:bold;">[{ts}] ═══ END CYCLE {cycle} ═══</span><br>'
+        html += f'<span style="color:#fbbf24;">  Last: {last_step}/{total_steps} | Next: {next_step}/{total_steps}</span><br>'
+        html += f'<span style="color:#fbbf24;">  Tokens: {tokens_used:,}/{tokens_limit:,} ({pct:.1f}%)</span><br><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
 
-        # Initial update
-        self.update_status()
+        self.log_to_file(f"[{full_ts}] {'='*50}")
+        self.log_to_file(f"END CYCLE {cycle}")
+        self.log_to_file(f"Last step: {last_step} of {total_steps}")
+        self.log_to_file(f"Next step: {next_step} of {total_steps}")
+        self.log_to_file(f"Tokens: {tokens_used:,}/{tokens_limit:,} ({pct:.1f}%)")
+        self.log_to_file(f"{'='*50}\n")
 
+    def log_error(self, message: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        html = f'<span style="color:#ef4444;font-weight:bold;">[{ts}] ❌ ERROR: {message}</span><br><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
+        self.log_to_file(f"[{datetime.now().isoformat()}] ERROR: {message}\n")
+
+    def log_info(self, message: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        html = f'<span style="color:#9ca3af;">[{ts}] ℹ️  {message}</span><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
+        self.log_to_file(f"[{datetime.now().isoformat()}] INFO: {message}")
+
+    def _scroll_to_bottom(self):
+        cursor = self.comms_log.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.comms_log.setTextCursor(cursor)
+
+    def clear_screen_log(self):
+        self.comms_log.clear()
+        self.log_info("Screen cleared")
+
+    # Cycle management
     def start_cycle(self):
-        """Start the first EE cycle or spawn continuation cycle."""
         try:
             tm = get_terminal_manager()
 
-            # Check if EE instance already running
-            if self._is_ee_instance_running():
-                # Already running - prompt for new spawning cycle
-                from PyQt6.QtWidgets import QMessageBox
-
-                reply = QMessageBox.question(
-                    self,
-                    "EE Instance Already Running",
-                    "An EE instance is already running.\n\n"
-                    "Start a NEW SPAWNING CYCLE?\n\n"
-                    "Use this when:\n"
-                    "• Previous instance hit token limit\n"
-                    "• Terminal session crashed/hung\n"
-                    "• Need fresh context window\n\n"
-                    "The existing instance will remain active.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
-                )
-
+            if self._is_ee_running():
+                reply = QMessageBox.question(self, "Already Running", 
+                    "Start NEW SPAWNING CYCLE?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+                
                 if reply == QMessageBox.StandardButton.Yes:
-                    # Spawn continuation cycle
-                    self._spawn_continuation_cycle(tm)
+                    self._spawn_continuation(tm)
                 return
 
-            # No instance running - start Cycle 1
-            terminal_info = tm.spawn_claude_terminal(
-                project_path=self.ee_root,
-                session_id="ee_cycle_1",
-                label="EE CYCLE 1 - AUTONOMOUS OPERATION",
-                position="left"
-            )
-
-            # Inject startup command (C3-proven pattern)
-            tm.inject_initialization_command(
-                terminal_id=terminal_info["terminal_id"],
-                session_id="ee_cycle_1",
-                command="Run python3 tools/ee_startup.py to begin work"
-            )
-
-            self.start_btn.setEnabled(False)
-            self.start_btn.setText("✅ Cycle Running")
+            self._spawn_new_cycle(tm)
 
         except Exception as e:
-            print(f"Error starting cycle: {e}")
+            self.log_error(f"Start failed: {str(e)}")
 
-    def _is_ee_instance_running(self) -> bool:
-        """
-        Check if EE instance is currently running.
+    def _spawn_new_cycle(self, tm):
+        token_target = self.token_target_spinbox.value()
 
-        Checks:
-        1. Status file shows active cycle
-        2. Recent status update (< 5 minutes)
+        prompt = f"Library extraction - Cycle {self.current_cycle}.\nRead plans/NextSteps.md.\nToken target: {token_target}%"
 
-        Returns:
-            True if EE instance appears to be running
-        """
-        if not self.status_file.exists():
-            return False
+        self.log_terminal_inject(f"cd {self.ee_root}", prompt)
 
-        try:
-            with open(self.status_file, 'r') as f:
-                status = json.load(f)
+        terminal_info = tm.spawn_claude_terminal(
+            project_path=self.ee_root,
+            session_id=f"ee_cycle_{self.current_cycle}",
+            label=f"EE CYCLE {self.current_cycle}",
+            position="left"
+        )
 
-            # Check if status shows active cycle
-            if status.get('status') == 'active':
-                # Check if status is recent (updated in last 5 minutes)
-                last_update = status.get('last_update', '')
-                if last_update:
-                    from datetime import datetime
-                    last_time = datetime.fromisoformat(last_update)
-                    now = datetime.now()
-                    age_minutes = (now - last_time).total_seconds() / 60
+        tm.inject_initialization_command(
+            terminal_id=terminal_info["terminal_id"],
+            session_id=f"ee_cycle_{self.current_cycle}",
+            command=prompt
+        )
 
-                    # Consider running if updated within last 5 minutes
-                    if age_minutes < 5:
-                        return True
+        self.log_mm_send("ee_control", "proceed", {"token_target_pct": token_target})
 
-            return False
+        self.cycle_label.setText(f"Cycle: {self.current_cycle}")
+        self.start_btn.setEnabled(False)
+        self.start_btn.setText("✅ Running")
 
-        except Exception as e:
-            print(f"Error checking EE status: {e}")
-            return False
+        self.log_info(f"Spawned Cycle {self.current_cycle}")
 
-    def _spawn_continuation_cycle(self, tm):
-        """
-        Spawn a new EE instance as continuation cycle.
+    def _spawn_continuation(self, tm):
+        self.current_cycle += 1
+        token_target = self.token_target_spinbox.value()
 
-        Reads current state from CURRENT_CYCLE.md and IMMEDIATE_NEXT.md
-        to provide appropriate continuation prompt.
-        """
-        try:
-            # Read current cycle state
-            current_cycle_file = self.ee_root / "plans" / "CURRENT_CYCLE.md"
-            immediate_next_file = self.ee_root / "plans" / "IMMEDIATE_NEXT.md"
+        prompt = f"Continue - Cycle {self.current_cycle} (CONTINUATION).\nRead plans/NextSteps.md.\nToken target: {token_target}%"
 
-            # Build continuation prompt
-            if current_cycle_file.exists() and immediate_next_file.exists():
-                prompt = (
-                    "Continue library extraction (SPAWNING CYCLE).\n\n"
-                    "Read plans/CURRENT_CYCLE.md (Step 2) for current status.\n"
-                    "Read plans/IMMEDIATE_NEXT.md (Step 3) for next action.\n\n"
-                    "Previous instance may have hit token limit or crashed.\n"
-                    "This is a fresh instance to continue the work."
-                )
-            else:
-                prompt = (
-                    "Continue EE work (SPAWNING CYCLE).\n\n"
-                    "Previous Claude Code instance hit token limit or crashed.\n"
-                    "Review recent git commits and status files.\n"
-                    "Continue where previous instance left off."
-                )
+        self.log_terminal_inject(f"cd {self.ee_root}", prompt)
 
-            # Determine next cycle number
-            next_cycle = self.total_cycles + 1
+        terminal_info = tm.spawn_claude_terminal(
+            project_path=self.ee_root,
+            session_id=f"ee_cycle_{self.current_cycle}_cont",
+            label=f"EE CYCLE {self.current_cycle} - CONT",
+            position="left"
+        )
 
-            # Spawn continuation
-            terminal_info = tm.spawn_claude_terminal(
-                project_path=self.ee_root,
-                session_id=f"ee_cycle_{next_cycle}_cont",
-                label=f"EE CYCLE {next_cycle} - CONTINUATION",
-                position="left"
+        tm.inject_initialization_command(
+            terminal_id=terminal_info["terminal_id"],
+            session_id=f"ee_cycle_{self.current_cycle}_cont",
+            command=prompt
+        )
+
+        self.cycle_label.setText(f"Cycle: {self.current_cycle}")
+        self.log_info(f"Spawned continuation {self.current_cycle}")
+
+    def _is_ee_running(self) -> bool:
+        if self.next_steps_file.exists():
+            import os
+            mtime = os.path.getmtime(self.next_steps_file)
+            age = (datetime.now().timestamp() - mtime) / 60
+            return age < 5
+        return False
+
+    def on_mm_message_received(self, message: dict):
+        service = message.get("service", "unknown")
+        action = message.get("action", "unknown")
+
+        self.log_mm_receive(service, action, message)
+
+        if action == "step_start":
+            step = message.get("step")
+            total = message.get("total_steps", 15)
+            self.step_label.setText(f"Current: Step {step} of {total}")
+
+        elif action == "step_complete":
+            step = message.get("step")
+            total = message.get("total_steps", 15)
+            self.step_label.setText(f"Completed: Step {step} of {total}")
+
+        elif action == "handoff":
+            self.log_end_of_cycle(
+                self.current_cycle,
+                message.get("last_step"),
+                message.get("next_step"),
+                message.get("total_steps", 15),
+                message.get("tokens_used", 0),
+                message.get("tokens_limit", 200000)
             )
+            self.current_cycle += 1
+            self.cycle_label.setText(f"Cycle: {self.current_cycle}")
+            self.start_btn.setEnabled(True)
+            self.start_btn.setText("🚀 START NEXT CYCLE 🚀")
 
-            # Inject continuation prompt
-            tm.inject_initialization_command(
-                terminal_id=terminal_info["terminal_id"],
-                session_id=f"ee_cycle_{next_cycle}_cont",
-                command=prompt
-            )
-
-            # Update UI
-            self.start_btn.setText(f"✅ Cycle {next_cycle} Spawned")
-            print(f"✓ Spawned continuation cycle {next_cycle}")
-            print(f"  Terminal: {terminal_info.get('terminal_id')}")
-
-        except Exception as e:
-            print(f"Error spawning continuation: {e}")
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self,
-                "Spawn Failed",
-                f"Failed to spawn continuation cycle:\n{str(e)}"
-            )
-
-    def check_and_spawn(self):
-        """Check for handoff signal and auto-spawn new instance."""
-        if self.handoff_file.exists():
-            try:
-                # Read handoff info
-                with open(self.handoff_file, 'r') as f:
-                    content = f.read()
-
-                # Parse cycle info
-                lines = content.strip().split('\n')
-                next_task = ""
-                for line in lines:
-                    if 'Next Task:' in line:
-                        next_task = line.split(':', 1)[1].strip()
-
-                if next_task:
-                    # Spawn next cycle
-                    tm = get_terminal_manager()
-
-                    # Determine next cycle number
-                    current = self.total_cycles + 1
-
-                    terminal_info = tm.spawn_claude_terminal(
-                        project_path=self.ee_root,
-                        session_id=f"ee_cycle_{current}",
-                        label=f"EE CYCLE {current} - HANDOFF DETECTED",
-                        position="left"
-                    )
-
-                    # Inject startup command (C3-proven pattern)
-                    tm.inject_initialization_command(
-                        terminal_id=terminal_info["terminal_id"],
-                        session_id=f"ee_cycle_{current}",
-                        command="Run python3 tools/ee_startup.py to detect handoff and continue"
-                    )
-
-                    print(f"Auto-spawned Cycle {current}")
-
-            except Exception as e:
-                print(f"Error auto-spawning: {e}")
-
-    def update_status(self):
-        """Update the display with current status."""
-        # Check for handoff signal
-        self.check_handoff_signal()
-
-        # Update cycle reports log
-        self.update_reports_log()
-
-        # Read cycle status
-        if not self.status_file.exists():
-            self.show_no_status()
+    def check_ee_status(self):
+        if not self.next_steps_file.exists():
             return
-
         try:
-            with open(self.status_file, 'r') as f:
-                data = json.load(f)
-
-            # Update cycle counter
-            current_cycle = data.get('cycle_number', 0)
-            if self.last_cycle is None or current_cycle > self.last_cycle:
-                self.total_cycles = current_cycle
-                self.last_cycle = current_cycle
-
-            self.cycle_counter.setText(str(self.total_cycles))
-
-            # Current status
-            self.current_cycle_label.setText(f"Cycle: {current_cycle}")
-
-            task = data.get('current_task', 'No task')
-            self.task_label.setText(f"Task: {task}")
-
-            started = data.get('started_at', '-')
-            if started != '-':
-                dt = datetime.fromisoformat(started)
-                started_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                started_str = '-'
-            self.started_label.setText(f"Started: {started_str}")
-
-            # Token usage (mock for now - would need actual tracking)
-            # For now, show as "monitoring"
-            self.token_label.setText("Usage: Monitoring...")
-
-            # Completed tasks
-            tasks = data.get('tasks_completed', [])
-            if tasks:
-                tasks_text = "\n".join([f"✅ {task}" for task in tasks])
-            else:
-                tasks_text = "No tasks completed yet"
-            self.tasks_display.setPlainText(tasks_text)
-
-            # Next action
-            next_action = data.get('next_action', 'No action specified')
-            self.next_label.setText(next_action)
-
-            # Last update time
-            now = datetime.now().strftime("%H:%M:%S")
-            self.update_time_label.setText(f"Last update: {now}")
-
-        except Exception as e:
-            self.show_error(str(e))
-
-    def update_reports_log(self):
-        """Update the cycle reports log display."""
-        if not self.cycle_reports_file.exists():
-            self.reports_display.setPlainText("No cycle reports yet. Waiting for EE to start...")
-            return
-
-        try:
-            # Check if file has new content
-            current_size = self.cycle_reports_file.stat().st_size
-            if current_size != self.last_report_size:
-                # Read the entire log file
-                with open(self.cycle_reports_file, 'r') as f:
-                    content = f.read()
-
-                # Update display
-                self.reports_display.setPlainText(content)
-
-                # Auto-scroll to bottom
-                scrollbar = self.reports_display.verticalScrollBar()
-                scrollbar.setValue(scrollbar.maximum())
-
-                # Update last size
-                self.last_report_size = current_size
-
-        except Exception as e:
-            self.reports_display.setPlainText(f"Error reading reports: {e}")
-
-    def check_handoff_signal(self):
-        """Check for handoff signal."""
-        if self.handoff_file.exists():
-            if not self.handoff_detected:
-                self.handoff_detected = True
-                self.handoff_alert.show()
-                self.handoff_alert.setText("🔄 HANDOFF DETECTED - New instance spawning...")
-        else:
-            if self.handoff_detected:
-                self.handoff_detected = False
-                self.handoff_alert.hide()
-
-    def show_no_status(self):
-        """Show when no status file exists."""
-        self.cycle_counter.setText("0")
-        self.current_cycle_label.setText("Cycle: No active cycle")
-        self.task_label.setText("Task: Waiting for EE to start...")
-        self.tasks_display.setPlainText("No status file found")
-        self.next_label.setText("Run: python3 tools/ee_startup.py")
-
-    def show_error(self, error: str):
-        """Show error state."""
-        self.tasks_display.setPlainText(f"Error reading status:\n{error}")
-
-    def update_token_display(self, current: int, budget: int = 200000):
-        """Update token usage display."""
-        percentage = int((current / budget) * 100)
-        self.token_bar.setValue(percentage)
-        self.token_label.setText(f"Usage: {current:,} / {budget:,}")
-
-        # Update color and status based on percentage
-        if percentage < 50:
-            status = "✅ HEALTHY"
-            color = "#4CAF50"  # Green
-        elif percentage < 70:
-            status = "🟡 MODERATE"
-            color = "#FFC107"  # Amber
-        elif percentage < 85:
-            status = "🟠 PREPARE HANDOFF"
-            color = "#FF9800"  # Orange
-        else:
-            status = "🔴 HANDOFF NEEDED"
-            color = "#F44336"  # Red
-
-        self.token_status.setText(status)
-        self.token_bar.setStyleSheet(f"""
-            QProgressBar {{
-                border: 2px solid #ccc;
-                border-radius: 5px;
-                text-align: center;
-                height: 25px;
-            }}
-            QProgressBar::chunk {{
-                background-color: {color};
-                border-radius: 3px;
-            }}
-        """)
+            import re
+            content = self.next_steps_file.read_text()
+            next_match = re.search(r'\*\*Next step:\*\*\s*Step (\d+)', content)
+            if next_match and "Current:" not in self.step_label.text():
+                self.step_label.setText(f"Next: Step {next_match.group(1)} of 15")
+        except:
+            pass
 
 
 def main():
-    """Run the EE monitor GUI."""
-    # Detect EE root
-    ee_root = Path(__file__).parent.parent
-
     app = QApplication(sys.argv)
-
-    # Set application style
-    app.setStyle('Fusion')
-
-    # Create and show window
-    window = EEMonitorWindow(ee_root)
+    window = EEMonitorWindow(Path(__file__).parent.parent)
     window.show()
-
     sys.exit(app.exec())
 
 
