@@ -22,9 +22,20 @@ from .module_monitor import ModuleMonitor, ModuleSizeViolation
 
 from .terminal_manager import TerminalManager, get_terminal_manager
 
-# SettingsManager requires PyQt6 - only import if available
+from .base_application import BaseApplication, create_application
+
+# Import parent_cc_protocol components
+from .parent_cc_protocol import (
+    ParentCCProtocol,
+    RequestType,
+    RequestPriority,
+    ControlCommand
+)
+
+# PyQt6-dependent imports - only if available
 try:
     from .settings_manager import SettingsManager
+    from .mesh_integration import MeshIntegration
     __all__ = [
         "spawn_claude_instance",
         "check_instance_status",
@@ -33,10 +44,17 @@ try:
         "ModuleSizeViolation",
         "TerminalManager",
         "get_terminal_manager",
-        "SettingsManager"
+        "SettingsManager",
+        "MeshIntegration",
+        "BaseApplication",
+        "create_application",
+        "ParentCCProtocol",
+        "RequestType",
+        "RequestPriority",
+        "ControlCommand"
     ]
 except ImportError:
-    # PyQt6 not available, skip SettingsManager
+    # PyQt6 not available, skip PyQt6-dependent modules
     __all__ = [
         "spawn_claude_instance",
         "check_instance_status",
@@ -44,7 +62,13 @@ except ImportError:
         "ModuleMonitor",
         "ModuleSizeViolation",
         "TerminalManager",
-        "get_terminal_manager"
+        "get_terminal_manager",
+        "BaseApplication",
+        "create_application",
+        "ParentCCProtocol",
+        "RequestType",
+        "RequestPriority",
+        "ControlCommand"
     ]
 
 __version__ = "1.0.0"
