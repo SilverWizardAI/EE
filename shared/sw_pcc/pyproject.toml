@@ -1,0 +1,27 @@
+[project]
+name = "sw-pcc"
+version = "1.0.0"
+description = "Silver Wizard Parent CC Control - PCC management tools"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "sw-core>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sw_pcc"]
+
+[project.scripts]
+sw-registry = "sw_pcc.registry:main"
+sw-create-app = "sw_pcc.create_app:main"
+sw-launcher = "sw_pcc.launcher:main"
