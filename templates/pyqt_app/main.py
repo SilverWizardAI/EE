@@ -7,9 +7,9 @@ Template main.py - customize for your application.
 import sys
 from PyQt6.QtWidgets import QVBoxLayout, QLabel
 
-from base_application import BaseApplication, create_application
-from parent_cc_protocol import ParentCCProtocol
-from version_info._version_data import VERSION
+from sw_core.base_application import BaseApplication, create_application
+from sw_core.parent_cc_protocol import ParentCCProtocol
+from sw_core.version_info import get_version
 
 
 class {APP_NAME}(BaseApplication):
@@ -39,4 +39,4 @@ class {APP_NAME}(BaseApplication):
 
 
 if __name__ == "__main__":
-    sys.exit(create_application({APP_NAME}, "{APP_NAME}", VERSION))
+    sys.exit(create_application({APP_NAME}, "{APP_NAME}", get_version()))

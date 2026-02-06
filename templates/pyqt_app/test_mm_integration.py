@@ -18,7 +18,7 @@ MM_PATH = Path(__file__).parent.parent.parent.parent / "MM"
 if MM_PATH.exists():
     sys.path.insert(0, str(MM_PATH))
 
-from mesh_integration import MeshIntegration
+from sw_core.mesh_integration import MeshIntegration
 
 
 # Fixtures

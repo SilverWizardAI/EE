@@ -15,13 +15,18 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
-packages = ["sw_pcc"]
+[tool.hatch.build.targets.wheel]
+packages = ["."]
 
 [project.scripts]
-sw-registry = "sw_pcc.registry:main"
-sw-create-app = "sw_pcc.create_app:main"
-sw-launcher = "sw_pcc.launcher:main"
+sw-registry = "registry:main"
+sw-create-app = "create_app:main"
+sw-launcher = "launcher:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"

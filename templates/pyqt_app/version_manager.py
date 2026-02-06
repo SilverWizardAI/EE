@@ -14,12 +14,11 @@ from pathlib import Path
 
 # Try to import version_info library for automatic build tracking
 try:
-    from .version_info import (
+    from sw_core.version_info import (
         get_version,
         get_build_number,
         get_build_info,
-        format_for_about_box,
-        is_development_build
+        format_for_about_box
     )
     _HAS_VERSION_INFO = True
 except ImportError:
@@ -136,7 +135,7 @@ class VersionManager:
                 "build_date": info.get("build_date", "unknown"),
                 "build_time": info.get("build_time", "unknown"),
                 "build_timestamp": info.get("build_timestamp", "unknown"),
-                "is_development": is_development_build(),
+                "is_development": False  # is_development_build not available,
             }
         else:
             # Fallback to manual metadata
