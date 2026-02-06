@@ -60,7 +60,7 @@ class EEMonitorWindow(QMainWindow):
     def init_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle("🏛️ EE Monitor - Autonomous Operation")
-        self.setGeometry(100, 100, 500, 700)
+        self.setGeometry(100, 100, 700, 900)
 
         # Central widget
         central = QWidget()
@@ -80,6 +80,25 @@ class EEMonitorWindow(QMainWindow):
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setStyleSheet("color: #666;")
         layout.addWidget(subtitle)
+
+        # START BUTTON (TOP - MOST VISIBLE)
+        self.start_btn = QPushButton("🚀 START CYCLE 🚀")
+        self.start_btn.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.start_btn.setMinimumHeight(80)
+        self.start_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF0000;
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                font-size: 20px;
+            }
+            QPushButton:hover {
+                background-color: #CC0000;
+            }
+        """)
+        self.start_btn.clicked.connect(self.start_cycle)
+        layout.addWidget(self.start_btn)
 
         # Cycle Counter (Prominent)
         cycle_group = QGroupBox("Instance Cycles")
@@ -219,7 +238,7 @@ class EEMonitorWindow(QMainWindow):
 
         self.reports_display = QTextEdit()
         self.reports_display.setReadOnly(True)
-        self.reports_display.setMaximumHeight(150)
+        self.reports_display.setMaximumHeight(100)
         self.reports_display.setStyleSheet("""
             QTextEdit {
                 background-color: #2b2b2b;
@@ -268,31 +287,10 @@ class EEMonitorWindow(QMainWindow):
         self.update_time_label.setStyleSheet("color: #999; font-size: 8pt; margin-top: 10px;")
         layout.addWidget(self.update_time_label)
 
-        # Control buttons
-        button_layout = QHBoxLayout()
-
-        self.start_btn = QPushButton("🚀 START CYCLE")
-        self.start_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        self.start_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                padding: 15px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
-        self.start_btn.clicked.connect(self.start_cycle)
-        button_layout.addWidget(self.start_btn)
-
+        # Refresh button
         refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.clicked.connect(self.update_status)
-        button_layout.addWidget(refresh_btn)
-
-        layout.addLayout(button_layout)
-        layout.addStretch()
+        layout.addWidget(refresh_btn)
 
     def load_config(self) -> dict:
         """Load configuration from file."""
@@ -562,13 +560,6 @@ def main():
 
     # Create and show window
     window = EEMonitorWindow(ee_root)
-
-    # Position window on right half of screen
-    screen = app.primaryScreen().geometry()
-    width = screen.width() // 2
-    height = screen.height()
-    window.setGeometry(width, 0, width, height)
-
     window.show()
 
     sys.exit(app.exec())
