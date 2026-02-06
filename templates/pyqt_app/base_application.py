@@ -7,9 +7,11 @@ Module Size Target: <400 lines (Current: ~350 lines)
 """
 
 import sys
+import os
+import time
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
@@ -25,11 +27,13 @@ try:
     from .version_manager import VersionManager
     from .mesh_integration import MeshIntegration
     from .module_monitor import ModuleMonitor
+    from .sw_core.spawn_claude import spawn_claude_instance
 except ImportError:
     from settings_manager import SettingsManager
     from version_manager import VersionManager
     from mesh_integration import MeshIntegration
     from module_monitor import ModuleMonitor
+    from sw_core.spawn_claude import spawn_claude_instance
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,7 @@ class BaseApplication(QMainWindow):
     settings_changed = pyqtSignal(dict)
     mesh_connected = pyqtSignal()
     mesh_disconnected = pyqtSignal()
+    token_critical = pyqtSignal(dict)  # Emitted when token usage is critical
 
     def __init__(
         self,
@@ -112,11 +117,16 @@ class BaseApplication(QMainWindow):
         # Connect signals
         self._connect_signals()
 
+        # Token monitoring setup
+        self._start_time = time.time()
+        self._instance_id = f"{app_name.lower().replace(' ', '_')}_{os.getpid()}"
+
         # Start monitoring
         if self.module_monitor:
             self._start_module_monitoring()
 
         logger.info(f"✓ {app_name} initialized successfully")
+        logger.info(f"Instance ID: {self._instance_id}")
 
     def _setup_logging(self):
         """Configure application logging."""
@@ -287,6 +297,73 @@ class BaseApplication(QMainWindow):
     def _on_mesh_disconnected(self):
         """Called when mesh connection lost."""
         logger.warning("✗ Mesh disconnected")
+
+    def spawn_worker(
+        self,
+        working_dir: Path,
+        task: str,
+        worker_name: Optional[str] = None,
+        background: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Spawn new Claude Code instance for subtask.
+
+        Args:
+            working_dir: Directory for worker to operate in
+            task: Initial prompt/task for worker
+            worker_name: Optional worker name (default: {app_name}_worker)
+            background: Run in background (default: True)
+
+        Returns:
+            Worker instance info (instance_id, pid, status)
+
+        Example:
+            worker = self.spawn_worker(
+                working_dir=Path("/path/to/work"),
+                task="Extract module X from codebase",
+                worker_name="extractor_1"
+            )
+        """
+        worker_name = worker_name or f"{self.app_name}_worker"
+
+        # Spawn the worker
+        result = spawn_claude_instance(
+            app_folder=working_dir,
+            app_name=worker_name,
+            initial_prompt=task,
+            background=background
+        )
+
+        logger.info(f"✓ Spawned worker: {result.get('instance_id', 'unknown')}")
+        return result
+
+    def get_my_token_usage(self) -> int:
+        """
+        Get current token usage for this instance.
+
+        NOTE: This is a placeholder that estimates tokens based on runtime.
+        In production, this would query the actual Claude API token counter.
+
+        Returns:
+            Estimated token count
+        """
+        # PLACEHOLDER: Estimate tokens based on uptime
+        # In real implementation, this would query Claude API
+        # Assume ~1000 tokens per minute of operation
+        uptime_minutes = (time.time() - self._start_time) / 60
+        estimated_tokens = int(uptime_minutes * 1000)
+
+        return min(estimated_tokens, 200000)
+
+    def report_token_usage(self):
+        """
+        Report current token usage to token monitor (if available).
+
+        This is called periodically by applications that participate
+        in token monitoring and autonomous handoff orchestration.
+        """
+        # Token monitoring is optional - only LibraryFactory uses it
+        logger.debug(f"Token usage: ~{self.get_my_token_usage():,} tokens")
 
     def closeEvent(self, event):
         """Handle application close."""
