@@ -346,11 +346,34 @@ class EEMonitorWindow(QMainWindow):
         self.update_status()
 
     def start_cycle(self):
-        """Start the first EE cycle."""
+        """Start the first EE cycle or spawn continuation cycle."""
         try:
             tm = get_terminal_manager()
 
-            # Start Cycle 1
+            # Check if EE instance already running
+            if self._is_ee_instance_running():
+                # Already running - prompt for new spawning cycle
+                from PyQt6.QtWidgets import QMessageBox
+
+                reply = QMessageBox.question(
+                    self,
+                    "EE Instance Already Running",
+                    "An EE instance is already running.\n\n"
+                    "Start a NEW SPAWNING CYCLE?\n\n"
+                    "Use this when:\n"
+                    "• Previous instance hit token limit\n"
+                    "• Terminal session crashed/hung\n"
+                    "• Need fresh context window\n\n"
+                    "The existing instance will remain active.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+                )
+
+                if reply == QMessageBox.StandardButton.Yes:
+                    # Spawn continuation cycle
+                    self._spawn_continuation_cycle(tm)
+                return
+
+            # No instance running - start Cycle 1
             terminal_info = tm.spawn_claude_terminal(
                 project_path=self.ee_root,
                 session_id="ee_cycle_1",
@@ -370,6 +393,105 @@ class EEMonitorWindow(QMainWindow):
 
         except Exception as e:
             print(f"Error starting cycle: {e}")
+
+    def _is_ee_instance_running(self) -> bool:
+        """
+        Check if EE instance is currently running.
+
+        Checks:
+        1. Status file shows active cycle
+        2. Recent status update (< 5 minutes)
+
+        Returns:
+            True if EE instance appears to be running
+        """
+        if not self.status_file.exists():
+            return False
+
+        try:
+            with open(self.status_file, 'r') as f:
+                status = json.load(f)
+
+            # Check if status shows active cycle
+            if status.get('status') == 'active':
+                # Check if status is recent (updated in last 5 minutes)
+                last_update = status.get('last_update', '')
+                if last_update:
+                    from datetime import datetime
+                    last_time = datetime.fromisoformat(last_update)
+                    now = datetime.now()
+                    age_minutes = (now - last_time).total_seconds() / 60
+
+                    # Consider running if updated within last 5 minutes
+                    if age_minutes < 5:
+                        return True
+
+            return False
+
+        except Exception as e:
+            print(f"Error checking EE status: {e}")
+            return False
+
+    def _spawn_continuation_cycle(self, tm):
+        """
+        Spawn a new EE instance as continuation cycle.
+
+        Reads current state from CURRENT_CYCLE.md and IMMEDIATE_NEXT.md
+        to provide appropriate continuation prompt.
+        """
+        try:
+            # Read current cycle state
+            current_cycle_file = self.ee_root / "plans" / "CURRENT_CYCLE.md"
+            immediate_next_file = self.ee_root / "plans" / "IMMEDIATE_NEXT.md"
+
+            # Build continuation prompt
+            if current_cycle_file.exists() and immediate_next_file.exists():
+                prompt = (
+                    "Continue library extraction (SPAWNING CYCLE).\n\n"
+                    "Read plans/CURRENT_CYCLE.md (Step 2) for current status.\n"
+                    "Read plans/IMMEDIATE_NEXT.md (Step 3) for next action.\n\n"
+                    "Previous instance may have hit token limit or crashed.\n"
+                    "This is a fresh instance to continue the work."
+                )
+            else:
+                prompt = (
+                    "Continue EE work (SPAWNING CYCLE).\n\n"
+                    "Previous Claude Code instance hit token limit or crashed.\n"
+                    "Review recent git commits and status files.\n"
+                    "Continue where previous instance left off."
+                )
+
+            # Determine next cycle number
+            next_cycle = self.total_cycles + 1
+
+            # Spawn continuation
+            terminal_info = tm.spawn_claude_terminal(
+                project_path=self.ee_root,
+                session_id=f"ee_cycle_{next_cycle}_cont",
+                label=f"EE CYCLE {next_cycle} - CONTINUATION",
+                position="left"
+            )
+
+            # Inject continuation prompt
+            tm.inject_initialization_command(
+                terminal_id=terminal_info["terminal_id"],
+                session_id=f"ee_cycle_{next_cycle}_cont",
+                command=prompt
+            )
+
+            # Update UI
+            self.start_btn.setText(f"✅ Cycle {next_cycle} Spawned")
+            print(f"✓ Spawned continuation cycle {next_cycle}")
+            print(f"  Terminal: {terminal_info.get('terminal_id')}")
+
+        except Exception as e:
+            print(f"Error spawning continuation: {e}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Spawn Failed",
+                f"Failed to spawn continuation cycle:\n{str(e)}"
+            )
 
     def check_and_spawn(self):
         """Check for handoff signal and auto-spawn new instance."""
