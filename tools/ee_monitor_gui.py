@@ -228,8 +228,9 @@ class EEMonitorWindow(QMainWindow):
         self.mm_display.setMaximumHeight(120)
         self.mm_display.setStyleSheet("""
             QTextEdit {
-                background-color: #2d2d2d;
-                color: #10b981;
+                background-color: black;
+                color: white;
+                font-weight: bold;
                 font-family: 'Courier New', monospace;
                 font-size: 9pt;
                 padding: 5px;
@@ -249,8 +250,9 @@ class EEMonitorWindow(QMainWindow):
         self.comms_log.setMinimumHeight(500)
         self.comms_log.setStyleSheet("""
             QTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
+                background-color: black;
+                color: white;
+                font-weight: bold;
                 font-family: 'Courier New', monospace;
                 font-size: 10pt;
                 padding: 10px;
