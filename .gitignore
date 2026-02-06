@@ -65,7 +65,10 @@ secrets/
 temp/
 tmp/
 logs/
-apps/
+
+# Generated test apps (but keep the builder tool itself)
+apps/*
+!apps/SW2_App_Builder/
 
 # OS
 .DS_Store
