@@ -93,6 +93,12 @@ class EEMonitorWindow(QMainWindow):
         self.monitor_timer.timeout.connect(self.check_ee_status)
         self.monitor_timer.start(5000)
 
+        # MM stats monitoring (every 2 seconds)
+        self.mm_stats_timer = QTimer(self)
+        self.mm_stats_timer.timeout.connect(self._update_mm_status)
+        self.mm_stats_timer.start(2000)
+        self.mm_stats_file = Path.home() / ".mm_mesh_stats.json"
+
     def closeEvent(self, event):
         self.log_to_file(f"EEM: \n{'='*60}")
         self.log_to_file(f"EEM: EE Monitor closed")
@@ -170,6 +176,12 @@ class EEMonitorWindow(QMainWindow):
 
         self.step_label = QLabel("Step: Waiting")
         status_layout.addWidget(self.step_label)
+
+        # MM Mesh Status (small)
+        self.mm_status_label = QLabel("MM: Checking...")
+        self.mm_status_label.setFont(QFont("Arial", 10))
+        self.mm_status_label.setStyleSheet("color: #888888;")
+        status_layout.addWidget(self.mm_status_label)
 
         status_group.setLayout(status_layout)
         layout.addWidget(status_group)
@@ -371,6 +383,27 @@ class EEMonitorWindow(QMainWindow):
                             self.start_btn.setText("✅ Running")
         except Exception:
             pass  # Silently ignore polling errors
+
+    def _update_mm_status(self):
+        """Update MM mesh status display from stats file."""
+        try:
+            if not self.mm_stats_file.exists():
+                self.mm_status_label.setText("MM: No stats file")
+                return
+
+            with open(self.mm_stats_file, 'r') as f:
+                stats = json.load(f)
+
+            services = stats.get("total_services", 0)
+            messages = stats.get("total_messages", 0)
+
+            # Update label with compact format
+            self.mm_status_label.setText(f"MM: {services} services | {messages} msgs")
+            self.mm_status_label.setStyleSheet("color: #10b981;")  # Green when active
+
+        except Exception as e:
+            self.mm_status_label.setText(f"MM: Error reading stats")
+            self.mm_status_label.setStyleSheet("color: #ef4444;")  # Red on error
 
     # Cycle management
     def start_cycle(self):
