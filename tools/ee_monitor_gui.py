@@ -20,6 +20,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPalette, QColor
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+from sw_core import get_terminal_manager
 
 
 class EEMonitorWindow(QMainWindow):
@@ -265,11 +268,30 @@ class EEMonitorWindow(QMainWindow):
         self.update_time_label.setStyleSheet("color: #999; font-size: 8pt; margin-top: 10px;")
         layout.addWidget(self.update_time_label)
 
-        # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh Now")
-        refresh_btn.clicked.connect(self.update_status)
-        layout.addWidget(refresh_btn)
+        # Control buttons
+        button_layout = QHBoxLayout()
 
+        self.start_btn = QPushButton("🚀 START CYCLE")
+        self.start_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.start_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 15px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.start_btn.clicked.connect(self.start_cycle)
+        button_layout.addWidget(self.start_btn)
+
+        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn.clicked.connect(self.update_status)
+        button_layout.addWidget(refresh_btn)
+
+        layout.addLayout(button_layout)
         layout.addStretch()
 
     def load_config(self) -> dict:
@@ -317,8 +339,68 @@ class EEMonitorWindow(QMainWindow):
         self.timer.timeout.connect(self.update_status)
         self.timer.start(2000)  # Update every 2 seconds
 
+        # Handoff monitoring timer
+        self.handoff_timer = QTimer()
+        self.handoff_timer.timeout.connect(self.check_and_spawn)
+        self.handoff_timer.start(3000)  # Check every 3 seconds
+
         # Initial update
         self.update_status()
+
+    def start_cycle(self):
+        """Start the first EE cycle."""
+        try:
+            tm = get_terminal_manager()
+
+            # Start Cycle 1
+            terminal_info = tm.spawn_claude_terminal(
+                project_path=self.ee_root,
+                session_id="ee_cycle_1",
+                initial_prompt="Run python3 tools/ee_startup.py to begin work",
+                label="EE Cycle 1",
+                position="left"
+            )
+
+            self.start_btn.setEnabled(False)
+            self.start_btn.setText("✅ Cycle Running")
+
+        except Exception as e:
+            print(f"Error starting cycle: {e}")
+
+    def check_and_spawn(self):
+        """Check for handoff signal and auto-spawn new instance."""
+        if self.handoff_file.exists():
+            try:
+                # Read handoff info
+                with open(self.handoff_file, 'r') as f:
+                    content = f.read()
+
+                # Parse cycle info
+                lines = content.strip().split('\n')
+                next_task = ""
+                for line in lines:
+                    if 'Next Task:' in line:
+                        next_task = line.split(':', 1)[1].strip()
+
+                if next_task:
+                    # Spawn next cycle
+                    tm = get_terminal_manager()
+
+                    # Determine next cycle number
+                    current = self.total_cycles + 1
+
+                    terminal_info = tm.spawn_claude_terminal(
+                        project_path=self.ee_root,
+                        session_id=f"ee_cycle_{current}",
+                        initial_prompt=f"Run python3 tools/ee_startup.py to detect handoff and continue",
+                        label=f"EE Cycle {current}",
+                        position="left"
+                    )
+
+                    print(f"Auto-spawned Cycle {current}")
+
+            except Exception as e:
+                print(f"Error auto-spawning: {e}")
 
     def update_status(self):
         """Update the display with current status."""
