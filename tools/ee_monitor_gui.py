@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QProgressBar, QTextEdit, QGroupBox, QPushButton
+    QLabel, QProgressBar, QTextEdit, QGroupBox, QPushButton, QSpinBox
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPalette, QColor
@@ -41,11 +41,15 @@ class EEMonitorWindow(QMainWindow):
         self.status_file = ee_root / "status" / "EE_CYCLE_STATUS.json"
         self.handoff_file = ee_root / "status" / "HANDOFF_SIGNAL.txt"
         self.cycle_reports_file = ee_root / "status" / "cycle_reports.log"
+        self.config_file = ee_root / "status" / "ee_config.json"
 
         self.last_cycle = None
         self.total_cycles = 0
         self.handoff_detected = False
         self.last_report_size = 0  # Track log file size to detect new entries
+
+        # Load or create config
+        self.config = self.load_config()
 
         self.init_ui()
         self.start_monitoring()
@@ -111,6 +115,42 @@ class EEMonitorWindow(QMainWindow):
 
         status_group.setLayout(status_layout)
         layout.addWidget(status_group)
+
+        # Configuration Panel
+        config_group = QGroupBox("⚙️ Configuration")
+        config_layout = QVBoxLayout()
+
+        # Threshold control
+        threshold_row = QHBoxLayout()
+        threshold_label = QLabel("Handoff Threshold:")
+        threshold_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        threshold_row.addWidget(threshold_label)
+
+        self.threshold_spinbox = QSpinBox()
+        self.threshold_spinbox.setMinimum(20)
+        self.threshold_spinbox.setMaximum(95)
+        self.threshold_spinbox.setValue(self.config.get('handoff_threshold_percent', 20))
+        self.threshold_spinbox.setSuffix("%")
+        self.threshold_spinbox.setFont(QFont("Arial", 11))
+        self.threshold_spinbox.setStyleSheet("padding: 5px;")
+        self.threshold_spinbox.valueChanged.connect(self.on_threshold_changed)
+        threshold_row.addWidget(self.threshold_spinbox)
+
+        threshold_tokens = QLabel()
+        threshold_tokens.setStyleSheet("color: #666; font-size: 9pt;")
+        self.threshold_tokens_label = threshold_tokens
+        self.update_threshold_label()
+        threshold_row.addWidget(threshold_tokens)
+
+        threshold_row.addStretch()
+        config_layout.addLayout(threshold_row)
+
+        config_help = QLabel("💡 Set to 20% for testing, 50%+ for production")
+        config_help.setStyleSheet("color: #666; font-size: 9pt; font-style: italic;")
+        config_layout.addWidget(config_help)
+
+        config_group.setLayout(config_layout)
+        layout.addWidget(config_group)
 
         # Token Usage
         token_group = QGroupBox("Token Budget")
@@ -231,6 +271,45 @@ class EEMonitorWindow(QMainWindow):
         layout.addWidget(refresh_btn)
 
         layout.addStretch()
+
+    def load_config(self) -> dict:
+        """Load configuration from file."""
+        default_config = {
+            'handoff_threshold_percent': 20,  # Default 20% for testing
+            'token_budget': 200000
+        }
+
+        if not self.config_file.exists():
+            # Create default config
+            self.save_config(default_config)
+            return default_config
+
+        try:
+            with open(self.config_file, 'r') as f:
+                return json.load(f)
+        except:
+            return default_config
+
+    def save_config(self, config: dict):
+        """Save configuration to file."""
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            print(f"Error saving config: {e}")
+
+    def on_threshold_changed(self, value: int):
+        """Handle threshold change."""
+        self.config['handoff_threshold_percent'] = value
+        self.save_config(self.config)
+        self.update_threshold_label()
+
+    def update_threshold_label(self):
+        """Update the threshold tokens label."""
+        percent = self.config.get('handoff_threshold_percent', 20)
+        budget = self.config.get('token_budget', 200000)
+        threshold_tokens = int((percent / 100) * budget)
+        self.threshold_tokens_label.setText(f"({threshold_tokens:,} tokens)")
 
     def start_monitoring(self):
         """Start the monitoring timer."""

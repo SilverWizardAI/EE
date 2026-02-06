@@ -91,11 +91,51 @@ class EEManager:
         self.cycle_status_file = self.status_dir / "EE_CYCLE_STATUS.json"
         self.handoff_signal_file = self.status_dir / "HANDOFF_SIGNAL.txt"
         self.cycle_reports_file = self.status_dir / "cycle_reports.log"
+        self.config_file = self.status_dir / "ee_config.json"
 
         # Ensure status directory exists
         self.status_dir.mkdir(exist_ok=True)
 
         logger.info(f"EE Manager initialized: {self.ee_root}")
+
+    # Configuration Management
+
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get current configuration.
+
+        Returns:
+            Config dictionary with handoff_threshold_percent and token_budget
+        """
+        default_config = {
+            'handoff_threshold_percent': 20,  # Default 20% for testing
+            'token_budget': 200000
+        }
+
+        if not self.config_file.exists():
+            return default_config
+
+        try:
+            with open(self.config_file, 'r') as f:
+                config = json.load(f)
+            return {**default_config, **config}  # Merge with defaults
+        except Exception as e:
+            logger.error(f"Failed to read config: {e}")
+            return default_config
+
+    def get_threshold_tokens(self) -> int:
+        """
+        Get handoff threshold in tokens based on current config.
+
+        Returns:
+            Threshold in tokens
+        """
+        config = self.get_config()
+        percent = config.get('handoff_threshold_percent', 20)
+        budget = config.get('token_budget', 200000)
+        threshold = int((percent / 100) * budget)
+        logger.debug(f"Threshold: {percent}% = {threshold:,} tokens")
+        return threshold
 
     # Cycle Management
 
@@ -141,21 +181,28 @@ class EEManager:
             current = self.get_current_cycle()
             cycle_num = (current.cycle_number + 1) if current else 1
 
+        # Get current threshold from config
+        threshold = self.get_threshold_tokens()
+        config = self.get_config()
+
         status = CycleStatus(
             cycle_number=cycle_num,
             started_at=datetime.now().isoformat(),
             current_task=task,
-            next_action=task
+            next_action=task,
+            token_budget=config.get('token_budget', 200000),
+            token_threshold=threshold
         )
 
         self._save_cycle_status(status)
 
-        # Create and log cycle report
+        # Create and log cycle report with threshold info
         if report is None:
-            report = f"Starting {task}"
+            percent = config.get('handoff_threshold_percent', 20)
+            report = f"Starting {task} (Handoff at {percent}% = {threshold:,} tokens)"
         self._log_cycle_report(cycle_num, report)
 
-        logger.info(f"✅ Started Cycle {cycle_num}: {task}")
+        logger.info(f"✅ Started Cycle {cycle_num}: {task} (threshold: {threshold:,} tokens)")
 
         return status
 
@@ -238,13 +285,15 @@ class EEManager:
         Returns:
             True if handoff should be triggered
         """
-        status = self.get_current_cycle()
-        threshold = status.token_threshold if status else 170000
+        # Always use latest threshold from config
+        threshold = self.get_threshold_tokens()
 
         should_handoff = current_tokens >= threshold
 
         if should_handoff:
-            logger.warning(f"🔄 Handoff threshold reached: {current_tokens}/{threshold}")
+            config = self.get_config()
+            percent = config.get('handoff_threshold_percent', 20)
+            logger.warning(f"🔄 Handoff threshold reached: {current_tokens:,}/{threshold:,} ({percent}%)")
 
         return should_handoff
 
