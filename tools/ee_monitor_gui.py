@@ -354,9 +354,15 @@ class EEMonitorWindow(QMainWindow):
             terminal_info = tm.spawn_claude_terminal(
                 project_path=self.ee_root,
                 session_id="ee_cycle_1",
-                initial_prompt="Run python3 tools/ee_startup.py to begin work",
-                label="EE Cycle 1",
+                label="EE CYCLE 1 - AUTONOMOUS OPERATION",
                 position="left"
+            )
+
+            # Inject startup command (C3-proven pattern)
+            tm.inject_initialization_command(
+                terminal_id=terminal_info["terminal_id"],
+                session_id="ee_cycle_1",
+                command="Run python3 tools/ee_startup.py to begin work"
             )
 
             self.start_btn.setEnabled(False)
@@ -390,9 +396,15 @@ class EEMonitorWindow(QMainWindow):
                     terminal_info = tm.spawn_claude_terminal(
                         project_path=self.ee_root,
                         session_id=f"ee_cycle_{current}",
-                        initial_prompt=f"Run python3 tools/ee_startup.py to detect handoff and continue",
-                        label=f"EE Cycle {current}",
+                        label=f"EE CYCLE {current} - HANDOFF DETECTED",
                         position="left"
+                    )
+
+                    # Inject startup command (C3-proven pattern)
+                    tm.inject_initialization_command(
+                        terminal_id=terminal_info["terminal_id"],
+                        session_id=f"ee_cycle_{current}",
+                        command="Run python3 tools/ee_startup.py to detect handoff and continue"
                     )
 
                     print(f"Auto-spawned Cycle {current}")

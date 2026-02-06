@@ -435,17 +435,23 @@ Timestamp: {info['timestamp']}
             next_cycle = (status.cycle_number + 1) if status else 1
             session_id = f"ee_cycle_{next_cycle}"
 
-            # Build automatic startup prompt
-            # This forces the new instance to run startup sequence immediately
-            auto_prompt = f"Run python3 tools/ee_startup.py to detect handoff and get next steps. Then: {initial_prompt}"
-
             # Spawn terminal on left half of screen
             terminal_info = tm.spawn_claude_terminal(
                 project_path=self.ee_root,
                 session_id=session_id,
-                initial_prompt=auto_prompt,
-                label=f"EE Cycle {next_cycle}",
+                label=f"EE CYCLE {next_cycle} - HANDOFF",
                 position="left"
+            )
+
+            # Build automatic startup command
+            # This forces the new instance to run startup sequence immediately
+            auto_command = f"Run python3 tools/ee_startup.py to detect handoff and get next steps. Then: {initial_prompt}"
+
+            # Inject startup command (C3-proven pattern)
+            tm.inject_initialization_command(
+                terminal_id=terminal_info["terminal_id"],
+                session_id=session_id,
+                command=auto_command
             )
 
             logger.info(f"✓ Fresh EE instance spawned: PID={terminal_info['pid']}, WindowID={terminal_info['terminal_id']}")

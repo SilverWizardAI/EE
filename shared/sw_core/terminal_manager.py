@@ -35,7 +35,6 @@ class TerminalManager:
         self,
         project_path: Path,
         session_id: str,
-        initial_prompt: Optional[str] = None,
         label: Optional[str] = None,
         position: Optional[str] = None
     ) -> dict:
@@ -45,7 +44,6 @@ class TerminalManager:
         Args:
             project_path: Path to the project directory
             session_id: Identifier for this terminal (e.g., "cycle_1")
-            initial_prompt: Optional prompt to send on startup
             label: Optional label to echo in terminal
             position: Optional window position: "left" or "right" (half-screen)
 
@@ -71,14 +69,14 @@ class TerminalManager:
         if pid_file.exists():
             pid_file.unlink()
 
-        # Build command chain
-        # Use --permission-mode dontAsk to bypass trust prompt (from C3)
-        if initial_prompt:
-            command_chain = f"cd '{project_path}' && echo $$ > .claude/ee-claude.pid && claude code --permission-mode dontAsk --prompt '{initial_prompt}'"
-        elif label:
-            command_chain = f"echo '\\n\\n=== {label} ===\\n' && cd '{project_path}' && echo $$ > .claude/ee-claude.pid && claude code --permission-mode dontAsk"
+        # Build command chain with optional label
+        # CRITICAL: Use --permission-mode dontAsk to bypass trust prompt (proven in C3)
+        # Startup instructions provided via SessionStart hooks in .claude/settings.json
+        if label:
+            # Echo label for visibility
+            command_chain = f"echo '\\n\\n=== {label} ===\\n' && cd '{project_path}' && echo $$ > .claude/ee-claude.pid && claude --permission-mode dontAsk"
         else:
-            command_chain = f"cd '{project_path}' && echo $$ > .claude/ee-claude.pid && claude code --permission-mode dontAsk"
+            command_chain = f"cd '{project_path}' && echo $$ > .claude/ee-claude.pid && claude --permission-mode dontAsk"
 
         # Build AppleScript command with optional positioning
         position_script = ""
@@ -191,6 +189,66 @@ class TerminalManager:
         logger.info(f"[TerminalManager] Terminal registered for {session_id}: PID={pid}, WindowID={terminal_id}")
 
         return terminal_info
+
+    def inject_initialization_command(self, terminal_id: str, session_id: str, command: str):
+        """
+        Inject forced initialization command into Claude Code terminal.
+
+        Uses AppleScript to auto-type the initialization command as a pseudo-user message.
+        Based on C3's proven implementation.
+
+        Args:
+            terminal_id: Terminal window ID to inject into
+            session_id: Session identifier for logging
+            command: Command string to inject (e.g., "Run python3 tools/ee_startup.py")
+        """
+        logger.info(f"[TerminalManager] Injecting initialization command for {session_id}")
+
+        # Wait for Claude Code to fully load and show prompt
+        # CC needs time to: load, read CLAUDE.md, show welcome screen, display prompt
+        # CRITICAL: Must wait for actual prompt, not just terminal spawn
+        time.sleep(8.0)  # 8 seconds to ensure CC is fully ready
+
+        # AppleScript to type the command and press Enter
+        # CRITICAL: Long commands can have keystroke drops - break into chunks
+        inject_script = f'''
+        tell application "Terminal"
+            -- Activate the specific terminal window
+            set frontmost of window id {terminal_id} to true
+            activate
+        end tell
+
+        -- Longer delay to ensure Terminal is fully focused
+        delay 0.5
+
+        tell application "System Events"
+            -- Type the command
+            keystroke "{command}"
+
+            -- CRITICAL: Longer delay before Enter to ensure full text is buffered
+            delay 0.5
+
+            -- Press Enter to submit
+            keystroke return
+        end tell
+        '''
+
+        try:
+            result = subprocess.run(
+                ['osascript', '-e', inject_script],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                logger.info(f"[TerminalManager] Initialization command injected successfully")
+            else:
+                logger.warning(f"[TerminalManager] Failed to inject command: {result.stderr}")
+
+        except Exception as e:
+            logger.error(f"[TerminalManager] Error injecting command: {e}")
+            # Don't raise - terminal is still usable, just without auto-init
 
     def is_terminal_alive(self, session_id: str) -> bool:
         """
