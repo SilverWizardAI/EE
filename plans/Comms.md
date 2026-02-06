@@ -41,9 +41,12 @@
      "service": "ee_status",
      "action": "step_start",
      "step": X,
-     "step_name": "Extract mesh_integration.py"
+     "total_steps": 15,
+     "step_name": "Extract mesh_integration.py",
+     "message": "Starting step X of 15"
    }
    ```
+   - **App displays:** "Starting step X of 15"
    - **App logs:** MM received
 
 6. **EE completes step X:**
@@ -52,10 +55,13 @@
      "service": "ee_status",
      "action": "step_complete",
      "step": X,
+     "total_steps": 15,
      "step_name": "Extract mesh_integration.py",
-     "status": "success"
+     "status": "success",
+     "message": "Completed step X of 15"
    }
    ```
+   - **App displays:** "Completed step X of 15"
    - **App logs:** MM received
 
 7. **EE checks token usage:**
@@ -75,11 +81,14 @@
      "tokens_limit": 200000,
      "tokens_pct": 87.5,
      "last_step": X,
-     "last_step_name": "Extract settings_manager.py",
      "next_step": X+1,
-     "next_step_name": "Extract spawn_claude.py"
+     "total_steps": 15,
+     "last_step_name": "Extract settings_manager.py",
+     "next_step_name": "Extract spawn_claude.py",
+     "message": "Handoff: completed step X of 15, next is step X+1 of 15"
    }
    ```
+   - **App displays:** "Handoff: completed step X of 15"
    - **App logs:** MM received (End of cycle report)
 
 9. **EE updates NextSteps.md:**
@@ -115,39 +124,55 @@
 
 ## App Logging Requirements
 
-**App must log ALL communications:**
+**App must log ALL communications to BOTH screen AND file:**
+
+### Screen Log (60% of window)
+- Scrollable text area
+- Color-coded: INJECT (blue), SEND (purple), RECV (green), CYCLE (orange), ERROR (red)
+- Auto-scroll to bottom
+
+### File Log (for analysis)
+**Location:** `EE/logs/ee_monitor_YYYYMMDD.log`
+
+**Format:** Plain text with timestamps
 
 1. **Terminal Injection Log:**
    ```
-   [2026-02-06 10:15:23] TERMINAL INJECT → EE Cycle 1
+   [2026-02-06 10:15:23] CYCLE 1 | TERMINAL INJECT → EE
    Command: cd /A_Coding/EE
-   Prompt: Continue library extraction. Read NextSteps.md. Token target: 85%
+   Prompt: Library extraction - Cycle 1. Read NextSteps.md. Token target: 85%
    ```
 
 2. **MM Send Log:**
    ```
-   [2026-02-06 10:15:45] MM SEND → ee_control.proceed
+   [2026-02-06 10:15:45] CYCLE 1 | MM SEND → ee_control.proceed
    Payload: {"token_target_pct": 85}
    ```
 
 3. **MM Receive Log:**
    ```
-   [2026-02-06 10:15:50] MM RECV ← ee_status.cycle_start
-   Payload: {"cycle": 1, "next_step": 1}
+   [2026-02-06 10:15:50] CYCLE 1 | MM RECV ← ee_status.step_start
+   Payload: {"step": 1, "total_steps": 15, "message": "Starting step 1 of 15"}
+   Display: Starting step 1 of 15
+
+   [2026-02-06 10:16:30] CYCLE 1 | MM RECV ← ee_status.step_complete
+   Payload: {"step": 1, "total_steps": 15, "message": "Completed step 1 of 15", "status": "success"}
+   Display: Completed step 1 of 15
    ```
 
 4. **End of Cycle Log:**
    ```
-   [2026-02-06 12:45:30] END CYCLE 1
-   Last step: 3 (Extract spawn_claude.py)
-   Next step: 4 (Extract version_info/)
-   Tokens: 178000/200000 (89%)
+   [2026-02-06 12:45:30] ═══════════════════════════════════════
+   END CYCLE 1
+   Last step: 3 of 15 (Extract spawn_claude.py)
+   Next step: 4 of 15 (Extract version_info/)
+   Tokens: 178,000/200,000 (89%)
    Status: Handoff successful
+   ═══════════════════════════════════════
    ```
 
-**Logging window:**
-- Scrollable text area
-- 60% of App screen space
-- Monospace font for readability
-- Auto-scroll to bottom on new entries
-- Color-coded: SEND (blue), RECV (green), ERROR (red)
+### Log File Management
+- Create new log file daily: `ee_monitor_20260206.log`
+- Append to existing file if same day
+- Keep last 30 days of logs
+- Auto-rotate on startup if > 30 days old
