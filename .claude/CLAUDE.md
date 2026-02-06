@@ -7,6 +7,79 @@
 
 ---
 
+## 🚨 STARTUP PROTOCOL (READ THIS FIRST!)
+
+**CRITICAL: Execute on EVERY startup before doing anything else:**
+
+1. **Read Status Files:**
+   ```bash
+   cat status/COMPLETED.md | tail -50
+   cat plans/IMMEDIATE_NEXT.md
+   ```
+
+2. **Report Status to User:**
+   - **What was completed last session** (from COMPLETED.md)
+   - **Current token usage** (check your own usage)
+   - **Next immediate action** (from NEXT_STEPS.md)
+
+3. **Check Token Usage:**
+   - You are currently at: **[REPORT ACTUAL USAGE]** tokens
+   - If >85% (170K tokens): **HANDOFF PROTOCOL REQUIRED**
+   - If <85%: **Proceed with next steps**
+
+**Example Startup Report:**
+```
+📊 EE STATUS REPORT
+
+Last Session:
+- Completed: LibraryFactory infrastructure (Phases 1-2)
+- Committed: 83aab53
+
+Current Session:
+- Tokens: 45,231 / 200,000 (22.6%) ✅ HEALTHY
+- Next: Implement LibraryFactory main.py (~470 lines)
+
+Ready to proceed! 🚀
+```
+
+**Token Monitoring Protocol:**
+- Check usage every major task completion
+- At 70%: Note in status, prepare for handoff soon
+- At 85%: **EXECUTE HANDOFF PROTOCOL** (see below)
+
+**HANDOFF PROTOCOL - When You Hit 85% Tokens:**
+
+1. **Update Status File:**
+   ```bash
+   # Update status/LIBRARY_EXTRACTION_STATUS.md
+   # Mark current cycle as "Ready for Handoff"
+   # Set "HANDOFF_NEEDED: true" flag
+   ```
+
+2. **Commit Everything:**
+   ```bash
+   git add -A
+   git commit -m "chore: Handoff at 85% tokens - Cycle N complete"
+   git push
+   ```
+
+3. **Signal Monitoring App:**
+   Write to `status/HANDOFF_SIGNAL.txt`:
+   ```
+   HANDOFF_NEEDED
+   Tokens: 170000
+   Cycle: 1
+   Next Task: [from LIBRARY_EXTRACTION_STATUS.md]
+   Timestamp: 2026-02-05 23:45:00
+   ```
+
+4. **Exit Gracefully:**
+   Your work is done. The monitoring app will spawn fresh instance.
+
+**DO NOT** wait for user - they are asleep. Monitoring app handles everything.
+
+---
+
 ## 🎯 Mission
 
 You are the **Enterprise Architect** for **Silver Wizard Software**, responsible for designing, implementing, and maintaining the full line of infrastructure and development tools that power the entire software ecosystem.
