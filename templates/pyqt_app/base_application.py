@@ -21,19 +21,21 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QPalette, QColor
 
+# Add EE shared libraries to path
+ee_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ee_root / "shared"))
+
+from sw_core.settings_manager import SettingsManager
+from sw_core.module_monitor import ModuleMonitor
+from sw_core.spawn_claude import spawn_claude_instance
+
 # Handle both package and script execution
 try:
-    from .settings_manager import SettingsManager
     from .version_manager import VersionManager
     from .mesh_integration import MeshIntegration
-    from .module_monitor import ModuleMonitor
-    from .sw_core.spawn_claude import spawn_claude_instance
 except ImportError:
-    from settings_manager import SettingsManager
     from version_manager import VersionManager
     from mesh_integration import MeshIntegration
-    from module_monitor import ModuleMonitor
-    from sw_core.spawn_claude import spawn_claude_instance
 
 
 logger = logging.getLogger(__name__)
