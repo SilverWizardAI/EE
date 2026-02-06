@@ -28,8 +28,7 @@ from .base_application import BaseApplication, create_application
 from .parent_cc_protocol import (
     ParentCCProtocol,
     RequestType,
-    RequestPriority,
-    ControlCommand
+    RequestPriority
 )
 
 # PyQt6-dependent imports - only if available
@@ -50,8 +49,7 @@ try:
         "create_application",
         "ParentCCProtocol",
         "RequestType",
-        "RequestPriority",
-        "ControlCommand"
+        "RequestPriority"
     ]
 except ImportError:
     # PyQt6 not available, skip PyQt6-dependent modules
@@ -67,8 +65,7 @@ except ImportError:
         "create_application",
         "ParentCCProtocol",
         "RequestType",
-        "RequestPriority",
-        "ControlCommand"
+        "RequestPriority"
     ]
 
 __version__ = "1.0.0"
