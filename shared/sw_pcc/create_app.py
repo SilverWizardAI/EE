@@ -38,7 +38,8 @@ TEMPLATES = {
         "files_to_customize": [
             "version.json",
             "__init__.py",
-            "README.md"
+            "README.md",
+            "main.py"
         ]
     }
 }
@@ -232,6 +233,13 @@ def _customize_app(app_folder: Path, app_name: str, features: List[str]):
         content = content.replace("PyQt6 Application Template", app_name)
         content = content.replace("My App", app_name)
         readme_file.write_text(content)
+
+    # Update main.py with app name
+    main_file = app_folder / "main.py"
+    if main_file.exists():
+        content = main_file.read_text()
+        content = content.replace("{APP_NAME}", app_name)
+        main_file.write_text(content)
 
     # Create main.py if features include specific app types
     if "counter" in features:
