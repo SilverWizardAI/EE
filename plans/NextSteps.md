@@ -1,73 +1,73 @@
 # Next Steps
 
-**Last completed:** EEM heartbeat protocol implementation + monitor integration debugging
-**Next step:** Implement EE instance MM mesh registration with get_status tool
+**Last completed:** Step 13 - Update templates to use sw_core imports ✅
+**Next step:** Step 14 - Create test app and validate full lifecycle
 
 **Cycle:** Next
 **Target tokens:** 20% (~40K tokens)
 
 ---
 
-## Current Step Details
+## Step 13 Completion Summary ✅
 
-**PRIORITY: Implement EE Instance MM Mesh Integration**
+**COMPLETED in Cycle 1:**
 
-When EEM spawns EE instance, the startup prompt now includes:
-```
-FIRST: Register with MM mesh as 'ee_cycle_N' and expose get_status tool.
-THEN: Report your starting step number via MM mesh to ee_monitor.
-```
+### What Was Done:
 
-**EE Instance Must:**
-1. Register with MM mesh on startup:
-```python
-import httpx
+1. **MM Mesh Integration**
+   - Created `tools/ee_mesh_client.py` for EE instance registration
+   - Registered as 'ee_cycle_1' with get_status tool
+   - Integrated with monitor for progress updates
 
-def register_with_mm_mesh(cycle_number: int):
-    instance_name = f"ee_cycle_{cycle_number}"
-    tools = [{
-        "name": "get_status",
-        "description": "Get current cycle status",
-        "inputSchema": {"type": "object", "properties": {}}
-    }]
+2. **Template Updates**
+   - Updated `main.py` to import from sw_core
+   - Updated `__init__.py` to import from sw_core
+   - Updated `test_mm_integration.py` imports
+   - Updated `version_manager.py` imports
+   - Fixed VERSION import to use `get_version()` function
 
-    response = httpx.post(
-        "http://localhost:6001/register",
-        json={
-            "instance_name": instance_name,
-            "port": 9999,
-            "tools": tools
-        },
-        timeout=5.0
-    )
-    return response.status_code == 200
-```
+3. **Removed Duplicates**
+   - Deleted `base_application.py` (now in sw_core)
+   - Deleted `mesh_integration.py` (now in sw_core)
+   - Deleted `parent_cc_protocol.py` (now in sw_core)
+   - Deleted `version_info/` directory (now in sw_core)
 
-2. Implement get_status tool that returns:
-```python
-{
-    "step": 8,                    # Current step number
-    "task": "Extracting registry.py",  # What you're doing
-    "cycle_status": "running",     # or "complete"
-    "progress": "60%",             # Optional progress indicator
-    "tokens_used": 35000           # Current token count
-}
-```
+4. **Library Fixes**
+   - Fixed `sw_pcc/pyproject.toml` build configuration
+   - Created manual .pth file: `/opt/homebrew/lib/python3.13/site-packages/_sw_manual.pth`
+   - Points to: `/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/EE/shared`
 
-3. EEM will call this tool every 120 seconds (configurable)
+5. **Testing**
+   - Generated test app (TestLib2) from updated template
+   - Verified all sw_core imports work correctly
+   - Verified all sw_pcc imports work correctly
 
-4. When step completes, EEM detects by comparing responses
-
-5. When cycle completes, set `cycle_status: "complete"`
+### Result:
+✅ Template now uses shared libraries instead of duplicating code
+✅ All imports working correctly
+✅ Code duplication eliminated
 
 ---
 
-**THEN Continue with library extraction:**
+## Current Step: Step 14 - Create Test App and Validate
 
-**Step 13: Update template to use sw_core**
-- Location: `templates/pyqt_app/main.py` and other template files
-- Change: Update imports from direct imports to `from sw_core import ...`
-- Test: Generate app from template, verify imports work
+**Goal:** Generate a complete test application and validate full lifecycle.
+
+**Tasks:**
+1. Generate test app from updated template
+2. Fix template customization (main.py placeholders not being replaced)
+3. Run test app (headless mode)
+4. Test mesh integration
+5. Test Parent CC protocol
+6. Test settings manager
+7. Test module monitor
+8. Validate full lifecycle (startup → register → heartbeat → shutdown)
+9. Check for clean state (no zombies, no stale entries)
+
+**Known Issues to Fix:**
+- Template customization only updates: `version.json`, `__init__.py`, `README.md`
+- Need to add `main.py` to customization list in `create_app.py`
+- Placeholders like `{APP_NAME}` not being replaced in main.py
 
 ---
 
@@ -84,12 +84,40 @@ def register_with_mm_mesh(cycle_number: int):
 
 ✅ **Step 11**: sw_core pyproject.toml (already existed)
 
-✅ **Steps 8-10**: sw_pcc components (JUST COMPLETED)
+✅ **Steps 8-10**: sw_pcc components (Completed earlier)
 - registry.py (325 lines)
 - create_app.py (545 lines)
 - launcher.py (308 lines)
 
-✅ **Step 12**: sw_pcc pyproject.toml + __init__.py + README (JUST COMPLETED)
+✅ **Step 12**: sw_pcc pyproject.toml + __init__.py + README (Completed earlier)
+
+✅ **Step 13**: Template updates (JUST COMPLETED)
+- All imports now use sw_core
+- Duplicate files removed
+- Libraries installed and tested
+
+---
+
+## Installation Notes
+
+**Python Version:** Use Python 3.13+
+```bash
+python3.13 -m pip install --break-system-packages -e shared/sw_core
+python3.13 -m pip install --break-system-packages -e shared/sw_pcc
+```
+
+**Or use manual .pth file** (CURRENT APPROACH):
+```bash
+echo "/Users/stevedeighton/Library/CloudStorage/Dropbox/A_Coding/EE/shared" > \
+  /opt/homebrew/lib/python3.13/site-packages/_sw_manual.pth
+```
+
+**Import Test:**
+```python
+from sw_core.base_application import BaseApplication
+from sw_core.version_info import get_version
+from sw_pcc.create_app import create_app_from_template
+```
 
 ---
 
