@@ -11,6 +11,8 @@ Module Size: ~550 lines
 
 import json
 import sys
+import subprocess
+import time
 from pathlib import Path
 from datetime import datetime
 from PyQt6.QtWidgets import (
@@ -19,6 +21,12 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont, QTextCursor
+
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from sw_core import get_terminal_manager
@@ -42,9 +50,42 @@ class EEMonitorWindow(QMainWindow):
         self.log_file = self.log_dir / f"ee_monitor_{today}.log"
         self.log_fh = open(self.log_file, 'a', encoding='utf-8')
         
-        self.log_to_file(f"{'='*60}")
-        self.log_to_file(f"EE Monitor started at {datetime.now().isoformat()}")
-        self.log_to_file(f"{'='*60}\n")
+        self.log_to_file(f"EEM: {'='*60}")
+        self.log_to_file(f"EEM: EE Monitor started at {datetime.now().isoformat()}")
+        self.log_to_file(f"EEM: {'='*60}\n")
+
+        # MM Mesh Setup
+        self.mm_registered = False
+        if HTTPX_AVAILABLE:
+            self.log_to_file("EEM: Checking if MM mesh is running...")
+
+            if not self._check_mm_running():
+                self.log_to_file("EEM: MM mesh NOT running - starting it...")
+                if not self._start_mm_mesh():
+                    self.log_to_file("EEM: ❌ Failed to start MM mesh!")
+                    # Continue anyway - monitor can still work without MM
+                else:
+                    self.log_to_file("EEM: ✅ MM mesh started successfully")
+            else:
+                self.log_to_file("EEM: ✅ MM mesh already running")
+
+            # Register EEM with MM mesh
+            if self._check_mm_running():
+                self.log_to_file("EEM: Registering with MM mesh...")
+                if self._register_with_mm():
+                    self.log_to_file("EEM: ✅ Registered with MM as 'ee_monitor'")
+                    self.mm_registered = True
+                else:
+                    self.log_to_file("EEM: ⚠️ Failed to register with MM")
+
+            # Setup MM message polling
+            if self.mm_registered:
+                self.mm_poll_timer = QTimer(self)
+                self.mm_poll_timer.timeout.connect(self._poll_mm_messages)
+                self.mm_poll_timer.start(1000)  # Poll every second
+                self.log_to_file("EEM: Message polling started (1s interval)\n")
+        else:
+            self.log_to_file("EEM: ⚠️ httpx not available - MM mesh integration disabled\n")
 
         self.init_ui()
 
@@ -53,15 +94,21 @@ class EEMonitorWindow(QMainWindow):
         self.monitor_timer.start(5000)
 
     def closeEvent(self, event):
-        self.log_to_file(f"\n{'='*60}")
-        self.log_to_file(f"EE Monitor closed")
-        self.log_to_file(f"{'='*60}\n")
+        self.log_to_file(f"EEM: \n{'='*60}")
+        self.log_to_file(f"EEM: EE Monitor closed")
+        self.log_to_file(f"EEM: {'='*60}\n")
         if hasattr(self, 'log_fh'):
             self.log_fh.close()
         event.accept()
 
     def log_to_file(self, text: str):
-        self.log_fh.write(f"{text}\n")
+        """Log to file. Prefix with EEM: if not already prefixed."""
+        if not text.startswith("EEM:") and not text.startswith("EE:"):
+            # Legacy call without prefix - add EEM prefix
+            self.log_fh.write(f"EEM: {text}\n")
+        else:
+            # Already has prefix
+            self.log_fh.write(f"{text}\n")
         self.log_fh.flush()
 
     def init_ui(self):
@@ -166,9 +213,9 @@ class EEMonitorWindow(QMainWindow):
         self.comms_log.append(html)
         self._scroll_to_bottom()
 
-        self.log_to_file(f"[{full_ts}] CYCLE {self.current_cycle} | TERMINAL INJECT")
-        self.log_to_file(f"Command: {command}")
-        self.log_to_file(f"Prompt: {prompt}\n")
+        self.log_to_file(f"EEM: [{full_ts}] CYCLE {self.current_cycle} | TERMINAL INJECT")
+        self.log_to_file(f"EEM: Command: {command}")
+        self.log_to_file(f"EEM: Prompt: {prompt}\n")
 
     def log_mm_send(self, service: str, method: str, payload: dict):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -179,8 +226,8 @@ class EEMonitorWindow(QMainWindow):
         self.comms_log.append(html)
         self._scroll_to_bottom()
 
-        self.log_to_file(f"[{full_ts}] CYCLE {self.current_cycle} | MM SEND → {service}.{method}")
-        self.log_to_file(f"Payload: {json.dumps(payload)}\n")
+        self.log_to_file(f"EEM: [{full_ts}] CYCLE {self.current_cycle} | MM SEND → {service}.{method}")
+        self.log_to_file(f"EEM: Payload: {json.dumps(payload)}\n")
 
     def log_mm_receive(self, service: str, method: str, payload: dict):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -195,10 +242,10 @@ class EEMonitorWindow(QMainWindow):
         self.comms_log.append(html)
         self._scroll_to_bottom()
 
-        self.log_to_file(f"[{full_ts}] CYCLE {self.current_cycle} | MM RECV ← {service}.{method}")
-        self.log_to_file(f"Payload: {json.dumps(payload)}")
+        self.log_to_file(f"EE: [{full_ts}] CYCLE {self.current_cycle} | MM RECV ← {service}.{method}")
+        self.log_to_file(f"EE: Payload: {json.dumps(payload)}")
         if display_msg:
-            self.log_to_file(f"Display: {display_msg}")
+            self.log_to_file(f"EE: Display: {display_msg}")
         self.log_to_file("")
 
     def log_end_of_cycle(self, cycle: int, last_step: int, next_step: int,
@@ -213,26 +260,26 @@ class EEMonitorWindow(QMainWindow):
         self.comms_log.append(html)
         self._scroll_to_bottom()
 
-        self.log_to_file(f"[{full_ts}] {'='*50}")
-        self.log_to_file(f"END CYCLE {cycle}")
-        self.log_to_file(f"Last step: {last_step} of {total_steps}")
-        self.log_to_file(f"Next step: {next_step} of {total_steps}")
-        self.log_to_file(f"Tokens: {tokens_used:,}/{tokens_limit:,} ({pct:.1f}%)")
-        self.log_to_file(f"{'='*50}\n")
+        self.log_to_file(f"EEM: [{full_ts}] {'='*50}")
+        self.log_to_file(f"EEM: END CYCLE {cycle}")
+        self.log_to_file(f"EEM: Last step: {last_step} of {total_steps}")
+        self.log_to_file(f"EEM: Next step: {next_step} of {total_steps}")
+        self.log_to_file(f"EEM: Tokens: {tokens_used:,}/{tokens_limit:,} ({pct:.1f}%)")
+        self.log_to_file(f"EEM: {'='*50}\n")
 
     def log_error(self, message: str):
         ts = datetime.now().strftime("%H:%M:%S")
         html = f'<span style="color:#ef4444;font-weight:bold;">[{ts}] ❌ ERROR: {message}</span><br><br>'
         self.comms_log.append(html)
         self._scroll_to_bottom()
-        self.log_to_file(f"[{datetime.now().isoformat()}] ERROR: {message}\n")
+        self.log_to_file(f"EEM: [{datetime.now().isoformat()}] ERROR: {message}\n")
 
     def log_info(self, message: str):
         ts = datetime.now().strftime("%H:%M:%S")
         html = f'<span style="color:#9ca3af;">[{ts}] ℹ️  {message}</span><br>'
         self.comms_log.append(html)
         self._scroll_to_bottom()
-        self.log_to_file(f"[{datetime.now().isoformat()}] INFO: {message}")
+        self.log_to_file(f"EEM: [{datetime.now().isoformat()}] INFO: {message}")
 
     def _scroll_to_bottom(self):
         cursor = self.comms_log.textCursor()
@@ -242,6 +289,88 @@ class EEMonitorWindow(QMainWindow):
     def clear_screen_log(self):
         self.comms_log.clear()
         self.log_info("Screen cleared")
+
+    # MM Mesh integration methods
+    def _check_mm_running(self) -> bool:
+        """Check if MM mesh is running on port 6001."""
+        if not HTTPX_AVAILABLE:
+            return False
+        try:
+            response = httpx.get("http://localhost:6001/services", timeout=2.0)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def _start_mm_mesh(self) -> bool:
+        """Start MM mesh proxy in background."""
+        try:
+            mm_path = Path.home() / "Library/CloudStorage/Dropbox/A_Coding/MM"
+
+            if not mm_path.exists():
+                self.log_to_file(f"EEM: ❌ MM path not found: {mm_path}")
+                return False
+
+            # Start MM mesh in background
+            subprocess.Popen(
+                ["python3", "-m", "mcp_mesh.proxy.server",
+                 "--http-only", "--http-port", "6001"],
+                cwd=str(mm_path),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True  # Detach from parent
+            )
+
+            # Wait for it to start (max 10 seconds)
+            for i in range(20):
+                time.sleep(0.5)
+                if self._check_mm_running():
+                    return True
+
+            return False
+        except Exception as e:
+            self.log_to_file(f"EEM: Error starting MM: {e}")
+            return False
+
+    def _register_with_mm(self) -> bool:
+        """Register EEM as a service with MM mesh."""
+        if not HTTPX_AVAILABLE:
+            return False
+        try:
+            response = httpx.post(
+                "http://localhost:6001/register",
+                json={
+                    "instance_name": "ee_monitor",
+                    "port": 9998,  # Placeholder - EEM doesn't expose tools
+                    "tools": []
+                },
+                timeout=5.0
+            )
+            return response.status_code == 200
+        except Exception as e:
+            self.log_to_file(f"EEM: Registration error: {e}")
+            return False
+
+    def _poll_mm_messages(self):
+        """Poll MM mesh for messages from EE instances."""
+        if not HTTPX_AVAILABLE or not self.mm_registered:
+            return
+
+        try:
+            # Check for registered EE instances
+            response = httpx.get("http://localhost:6001/services", timeout=2.0)
+            if response.status_code == 200:
+                services = response.json().get("services", [])
+
+                # Look for EE cycle instances
+                for svc in services:
+                    instance_name = svc.get("instance_name", "")
+                    if instance_name.startswith("ee_cycle_"):
+                        # EE is registered - update UI if needed
+                        if "Running" not in self.start_btn.text():
+                            self.start_btn.setEnabled(False)
+                            self.start_btn.setText("✅ Running")
+        except Exception:
+            pass  # Silently ignore polling errors
 
     # Cycle management
     def start_cycle(self):
