@@ -158,7 +158,7 @@ class EEMonitorWindow(QMainWindow):
         self.token_target_spinbox = QSpinBox()
         self.token_target_spinbox.setMinimum(20)
         self.token_target_spinbox.setMaximum(95)
-        self.token_target_spinbox.setValue(85)
+        self.token_target_spinbox.setValue(20)  # Default to 20% for faster cycling
         self.token_target_spinbox.setSuffix("%")
         control_layout.addWidget(self.token_target_spinbox)
         
