@@ -547,13 +547,29 @@ class EEMonitorWindow(QMainWindow):
         token_target = self.token_target_spinbox.value()
         self.ee_instance_name = f"ee_cycle_{self.current_cycle}"
 
-        # Construct full prompt with registration instructions
-        prompt = f"""Library extraction - Cycle {self.current_cycle}.
-Read plans/NextSteps.md.
+        # Construct full prompt with MM mesh integration
+        prompt = f"""EE Cycle {self.current_cycle} - Read plans/NextSteps.md
 Token target: {token_target}%
 
-FIRST: Register with MM mesh as '{self.ee_instance_name}' and expose get_status tool.
-THEN: Report your starting step number via MM mesh to ee_monitor.
+CRITICAL FIRST STEP - Start HTTP Server for MM Mesh:
+```python
+from tools.ee_http_server import init_server, update_status
+server = init_server(cycle_number={self.current_cycle})
+# Server is now running as '{self.ee_instance_name}' on MM mesh
+```
+
+Throughout your work, update status:
+```python
+update_status(step=1, task="Description", progress="10%", tokens_used=15000)
+update_status(step=2, task="Next task", progress="45%")
+# When complete:
+update_status(cycle_status="complete", progress="100%")
+```
+
+I (EEM) will poll your status every 30 seconds via MM mesh.
+When you mark cycle_status="complete", I'll detect it and start the next cycle.
+
+Now begin your work.
 """
 
         # Log what we're sending
@@ -588,9 +604,10 @@ THEN: Report your starting step number via MM mesh to ee_monitor.
         interval_sec = self.heartbeat_spinbox.value()
         self.heartbeat_timer.start(interval_sec * 1000)
 
-        self.log_info(f"Spawned Cycle {self.current_cycle}")
-        self.log_info(f"Heartbeat: every {interval_sec}s")
-        self.log_info(f"Waiting for {self.ee_instance_name} to register...")
+        self.log_info(f"🚀 Spawned Cycle {self.current_cycle}: {self.ee_instance_name}")
+        self.log_info(f"📡 Heartbeat polling every {interval_sec}s via MM mesh")
+        self.log_info(f"⏳ Waiting for EE to start HTTP server and register...")
+        self.log_info(f"💡 EE will call: init_server(cycle_number={self.current_cycle})")
 
 
 def main():
