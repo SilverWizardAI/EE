@@ -90,6 +90,7 @@ class EEManager:
         self.status_dir = self.ee_root / "status"
         self.cycle_status_file = self.status_dir / "EE_CYCLE_STATUS.json"
         self.handoff_signal_file = self.status_dir / "HANDOFF_SIGNAL.txt"
+        self.cycle_reports_file = self.status_dir / "cycle_reports.log"
 
         # Ensure status directory exists
         self.status_dir.mkdir(exist_ok=True)
@@ -121,13 +122,14 @@ class EEManager:
             logger.error(f"Failed to read cycle status: {e}")
             return None
 
-    def start_new_cycle(self, task: str, previous_cycle: Optional[int] = None) -> CycleStatus:
+    def start_new_cycle(self, task: str, previous_cycle: Optional[int] = None, report: Optional[str] = None) -> CycleStatus:
         """
         Start a new work cycle.
 
         Args:
             task: Description of current task
             previous_cycle: Previous cycle number (auto-detected if not provided)
+            report: Optional cycle report (auto-generated if not provided)
 
         Returns:
             New CycleStatus object
@@ -147,6 +149,12 @@ class EEManager:
         )
 
         self._save_cycle_status(status)
+
+        # Create and log cycle report
+        if report is None:
+            report = f"Starting {task}"
+        self._log_cycle_report(cycle_num, report)
+
         logger.info(f"✅ Started Cycle {cycle_num}: {task}")
 
         return status
@@ -199,6 +207,24 @@ class EEManager:
         except Exception as e:
             logger.error(f"Failed to save cycle status: {e}")
             raise
+
+    def _log_cycle_report(self, cycle_num: int, report: str):
+        """
+        Log a cycle report to the reports file.
+
+        Args:
+            cycle_num: Cycle number
+            report: Report text
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] CYCLE {cycle_num}: {report}\n"
+
+        try:
+            with open(self.cycle_reports_file, 'a') as f:
+                f.write(log_entry)
+            logger.debug(f"Logged cycle {cycle_num} report")
+        except Exception as e:
+            logger.error(f"Failed to log cycle report: {e}")
 
     # Token Monitoring & Handoff
 
