@@ -20,6 +20,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+# Add shared library to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+from sw_core import get_terminal_manager
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -412,7 +416,7 @@ Timestamp: {info['timestamp']}
 
     def _spawn_fresh_instance(self, initial_prompt: str) -> Dict[str, Any]:
         """
-        Spawn fresh EE instance to continue work.
+        Spawn fresh EE instance to continue work using C3's TerminalManager.
 
         Args:
             initial_prompt: Initial prompt for new instance
@@ -420,28 +424,33 @@ Timestamp: {info['timestamp']}
         Returns:
             Dict with spawn details
         """
-        logger.info("Spawning fresh EE instance...")
-
-        cmd = [
-            "claude", "code",
-            "--cwd", str(self.ee_root),
-            "--prompt", initial_prompt
-        ]
+        logger.info("Spawning fresh EE instance using TerminalManager...")
 
         try:
-            # Spawn in background
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(self.ee_root)
+            # Get terminal manager
+            tm = get_terminal_manager()
+
+            # Determine session ID (next cycle)
+            status = self.get_current_cycle()
+            next_cycle = (status.cycle_number + 1) if status else 1
+            session_id = f"ee_cycle_{next_cycle}"
+
+            # Spawn terminal on left half of screen
+            terminal_info = tm.spawn_claude_terminal(
+                project_path=self.ee_root,
+                session_id=session_id,
+                initial_prompt=initial_prompt,
+                label=f"EE Cycle {next_cycle}",
+                position="left"
             )
 
-            logger.info(f"✓ Fresh EE instance spawned (PID: {process.pid})")
+            logger.info(f"✓ Fresh EE instance spawned: PID={terminal_info['pid']}, WindowID={terminal_info['terminal_id']}")
 
             return {
                 "status": "spawned",
-                "pid": process.pid,
+                "pid": terminal_info['pid'],
+                "terminal_id": terminal_info['terminal_id'],
+                "session_id": session_id,
                 "prompt": initial_prompt
             }
 

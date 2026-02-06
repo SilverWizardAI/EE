@@ -20,6 +20,8 @@ from .spawn_claude import (
 
 from .module_monitor import ModuleMonitor, ModuleSizeViolation
 
+from .terminal_manager import TerminalManager, get_terminal_manager
+
 # SettingsManager requires PyQt6 - only import if available
 try:
     from .settings_manager import SettingsManager
@@ -29,6 +31,8 @@ try:
         "stop_instance",
         "ModuleMonitor",
         "ModuleSizeViolation",
+        "TerminalManager",
+        "get_terminal_manager",
         "SettingsManager"
     ]
 except ImportError:
@@ -38,7 +42,9 @@ except ImportError:
         "check_instance_status",
         "stop_instance",
         "ModuleMonitor",
-        "ModuleSizeViolation"
+        "ModuleSizeViolation",
+        "TerminalManager",
+        "get_terminal_manager"
     ]
 
 __version__ = "1.0.0"
