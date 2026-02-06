@@ -11,72 +11,80 @@
 
 **CRITICAL: Execute on EVERY startup before doing anything else:**
 
-1. **Read Status Files:**
-   ```bash
-   cat status/COMPLETED.md | tail -50
-   cat plans/IMMEDIATE_NEXT.md
-   ```
+### Automated Startup Sequence
 
-2. **Report Status to User:**
-   - **What was completed last session** (from COMPLETED.md)
-   - **Current token usage** (check your own usage)
-   - **Next immediate action** (from NEXT_STEPS.md)
+Run the EE startup script to get complete status:
 
-3. **Check Token Usage:**
-   - You are currently at: **[REPORT ACTUAL USAGE]** tokens
-   - If >85% (170K tokens): **HANDOFF PROTOCOL REQUIRED**
-   - If <85%: **Proceed with next steps**
-
-**Example Startup Report:**
-```
-📊 EE STATUS REPORT
-
-Last Session:
-- Completed: LibraryFactory infrastructure (Phases 1-2)
-- Committed: 83aab53
-
-Current Session:
-- Tokens: 45,231 / 200,000 (22.6%) ✅ HEALTHY
-- Next: Implement LibraryFactory main.py (~470 lines)
-
-Ready to proceed! 🚀
+```bash
+python3 tools/ee_startup.py
 ```
 
-**Token Monitoring Protocol:**
-- Check usage every major task completion
-- At 70%: Note in status, prepare for handoff soon
-- At 85%: **EXECUTE HANDOFF PROTOCOL** (see below)
+This will automatically:
+- ✅ Detect handoff from previous instance (if any)
+- ✅ Show current cycle status and progress
+- ✅ Display token budget and thresholds
+- ✅ Tell you exactly what to do next
+- ✅ Provide handoff protocol reference
 
-**HANDOFF PROTOCOL - When You Hit 85% Tokens:**
+### Manual Status Check (if needed)
 
-1. **Update Status File:**
-   ```bash
-   # Update status/LIBRARY_EXTRACTION_STATUS.md
-   # Mark current cycle as "Ready for Handoff"
-   # Set "HANDOFF_NEEDED: true" flag
-   ```
+If startup script isn't available, check manually:
 
-2. **Commit Everything:**
-   ```bash
-   git add -A
-   git commit -m "chore: Handoff at 85% tokens - Cycle N complete"
-   git push
-   ```
+```bash
+# Cycle status
+python3 tools/ee_manager.py status
 
-3. **Signal Monitoring App:**
-   Write to `status/HANDOFF_SIGNAL.txt`:
-   ```
-   HANDOFF_NEEDED
-   Tokens: 170000
-   Cycle: 1
-   Next Task: [from LIBRARY_EXTRACTION_STATUS.md]
-   Timestamp: 2026-02-05 23:45:00
-   ```
+# Recent completions
+cat status/COMPLETED.md | tail -50
 
-4. **Exit Gracefully:**
-   Your work is done. The monitoring app will spawn fresh instance.
+# Planned next steps
+cat plans/IMMEDIATE_NEXT.md
+```
 
-**DO NOT** wait for user - they are asleep. Monitoring app handles everything.
+### During Work - Update Progress
+
+As you complete tasks, update the cycle status:
+
+```bash
+python3 tools/ee_manager.py update \
+  --task "Current task description" \
+  --completed "Task 1" "Task 2" \
+  --next "What comes next"
+```
+
+### Token Monitoring Protocol
+
+- **<50% tokens** (0-100K): ✅ Healthy, continue working
+- **50-70% tokens** (100K-140K): 🟡 Moderate, monitor progress
+- **70-85% tokens** (140K-170K): 🟠 Prepare for handoff soon
+- **>85% tokens** (170K+): 🔴 Execute handoff immediately
+
+---
+
+## 🔄 HANDOFF PROTOCOL (When You Hit 85% Tokens)
+
+**When you reach ~170K tokens (~85%), trigger automatic handoff:**
+
+```bash
+python3 tools/ee_manager.py handoff \
+  --tokens <your_current_tokens> \
+  --next "Description of what the next instance should do"
+```
+
+**This automatically:**
+1. ✅ Updates cycle status
+2. ✅ Commits all changes with proper message
+3. ✅ Pushes to remote
+4. ✅ Creates handoff signal
+5. ✅ Spawns fresh EE instance with context
+6. ✅ Passes work seamlessly to next cycle
+
+**Then your work is done!** The fresh instance will:
+- Detect the handoff signal on startup
+- Load the cycle context
+- Continue exactly where you left off
+
+**DO NOT** wait for user - they may be asleep. The automation handles everything.
 
 ---
 
