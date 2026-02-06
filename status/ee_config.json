@@ -1,0 +1,4 @@
+{
+  "handoff_threshold_percent": 20,
+  "token_budget": 200000
+}
