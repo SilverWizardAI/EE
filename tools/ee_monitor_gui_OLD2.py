@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 """
-EE Monitor GUI - Heartbeat-Driven Protocol
+EE Monitor GUI - Communications Logging Version
 
-Monitor actively polls EE instance (not passive waiting).
-EE instance is purely reactive - responds only when prompted.
+60% screen = Communications log (scrollable, file-backed)
+40% screen = Control panel (START, token target, status)
 
-Features:
-- Heartbeat protocol (configurable interval)
-- MM mesh monitoring window
-- Proper startup injection with register commands
-- Terminal termination before new cycle
-
-Module Size: ~650 lines
+Logs ALL communications to screen + file
+Module Size: ~550 lines
 """
 
 import json
@@ -38,17 +33,14 @@ from sw_core import get_terminal_manager
 
 
 class EEMonitorWindow(QMainWindow):
-    """EE Monitor with heartbeat-driven protocol."""
+    """EE Monitor with comprehensive communications logging."""
 
     def __init__(self, ee_root: Path):
         super().__init__()
 
         self.ee_root = ee_root
         self.next_steps_file = ee_root / "plans" / "NextSteps.md"
-        self.current_cycle = 1
-        self.ee_instance_name = None  # Current EE instance name (e.g., "ee_cycle_4")
-        self.ee_terminal_id = None    # Current terminal ID for termination
-        self.last_status = {}         # Last status from EE
+        self.current_cycle = 1  # App tracks cycle number
 
         # Setup file logging
         self.log_dir = ee_root / "logs"
@@ -57,7 +49,7 @@ class EEMonitorWindow(QMainWindow):
         today = datetime.now().strftime("%Y%m%d")
         self.log_file = self.log_dir / f"ee_monitor_{today}.log"
         self.log_fh = open(self.log_file, 'a', encoding='utf-8')
-
+        
         self.log_to_file(f"EEM: {'='*60}")
         self.log_to_file(f"EEM: EE Monitor started at {datetime.now().isoformat()}")
         self.log_to_file(f"EEM: {'='*60}\n")
@@ -71,6 +63,7 @@ class EEMonitorWindow(QMainWindow):
                 self.log_to_file("EEM: MM mesh NOT running - starting it...")
                 if not self._start_mm_mesh():
                     self.log_to_file("EEM: ❌ Failed to start MM mesh!")
+                    # Continue anyway - monitor can still work without MM
                 else:
                     self.log_to_file("EEM: ✅ MM mesh started successfully")
             else:
@@ -84,15 +77,21 @@ class EEMonitorWindow(QMainWindow):
                     self.mm_registered = True
                 else:
                     self.log_to_file("EEM: ⚠️ Failed to register with MM")
+
+            # Setup MM message polling
+            if self.mm_registered:
+                self.mm_poll_timer = QTimer(self)
+                self.mm_poll_timer.timeout.connect(self._poll_mm_messages)
+                self.mm_poll_timer.start(1000)  # Poll every second
+                self.log_to_file("EEM: Message polling started (1s interval)\n")
         else:
             self.log_to_file("EEM: ⚠️ httpx not available - MM mesh integration disabled\n")
 
         self.init_ui()
 
-        # Heartbeat timer (polls EE instance for status)
-        self.heartbeat_timer = QTimer(self)
-        self.heartbeat_timer.timeout.connect(self._heartbeat_check)
-        # Don't start until EE is running
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self.check_ee_status)
+        self.monitor_timer.start(5000)
 
         # MM stats monitoring (every 2 seconds)
         self.mm_stats_timer = QTimer(self)
@@ -111,14 +110,16 @@ class EEMonitorWindow(QMainWindow):
     def log_to_file(self, text: str):
         """Log to file. Prefix with EEM: if not already prefixed."""
         if not text.startswith("EEM:") and not text.startswith("EE:"):
+            # Legacy call without prefix - add EEM prefix
             self.log_fh.write(f"EEM: {text}\n")
         else:
+            # Already has prefix
             self.log_fh.write(f"{text}\n")
         self.log_fh.flush()
 
     def init_ui(self):
         self.setWindowTitle("🏛️ EE Monitor")
-        self.setGeometry(100, 100, 900, 1100)
+        self.setGeometry(100, 100, 900, 1000)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -146,46 +147,27 @@ class EEMonitorWindow(QMainWindow):
         self.start_btn.clicked.connect(self.start_cycle)
         layout.addWidget(self.start_btn)
 
-        # Configuration Group
-        config_group = QGroupBox("⚙️ Configuration")
-        config_layout = QVBoxLayout()
-
         # Token Target
-        token_row = QHBoxLayout()
+        control_group = QGroupBox("⚙️ Configuration")
+        control_layout = QHBoxLayout()
+        
         token_label = QLabel("Token Target %:")
         token_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        token_row.addWidget(token_label)
+        control_layout.addWidget(token_label)
 
         self.token_target_spinbox = QSpinBox()
         self.token_target_spinbox.setMinimum(20)
         self.token_target_spinbox.setMaximum(95)
-        self.token_target_spinbox.setValue(20)
+        self.token_target_spinbox.setValue(20)  # Default to 20% for faster cycling
         self.token_target_spinbox.setSuffix("%")
-        token_row.addWidget(self.token_target_spinbox)
-        token_row.addStretch()
-        config_layout.addLayout(token_row)
+        control_layout.addWidget(self.token_target_spinbox)
+        
+        control_layout.addStretch()
+        control_group.setLayout(control_layout)
+        layout.addWidget(control_group)
 
-        # Heartbeat Interval
-        heartbeat_row = QHBoxLayout()
-        heartbeat_label = QLabel("Heartbeat Interval (sec):")
-        heartbeat_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        heartbeat_row.addWidget(heartbeat_label)
-
-        self.heartbeat_spinbox = QSpinBox()
-        self.heartbeat_spinbox.setMinimum(30)
-        self.heartbeat_spinbox.setMaximum(600)
-        self.heartbeat_spinbox.setValue(120)  # Default 2 minutes
-        self.heartbeat_spinbox.setSuffix(" sec")
-        self.heartbeat_spinbox.valueChanged.connect(self._update_heartbeat_interval)
-        heartbeat_row.addWidget(self.heartbeat_spinbox)
-        heartbeat_row.addStretch()
-        config_layout.addLayout(heartbeat_row)
-
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group)
-
-        # Status Group
-        status_group = QGroupBox("📊 Current Status")
+        # Status
+        status_group = QGroupBox("Current Status")
         status_layout = QVBoxLayout()
 
         self.cycle_label = QLabel("Cycle: 1")
@@ -195,29 +177,14 @@ class EEMonitorWindow(QMainWindow):
         self.step_label = QLabel("Step: Waiting")
         status_layout.addWidget(self.step_label)
 
+        # MM Mesh Status (small)
+        self.mm_status_label = QLabel("MM: Checking...")
+        self.mm_status_label.setFont(QFont("Arial", 10))
+        self.mm_status_label.setStyleSheet("color: #888888;")
+        status_layout.addWidget(self.mm_status_label)
+
         status_group.setLayout(status_layout)
         layout.addWidget(status_group)
-
-        # MM Monitoring Window
-        mm_group = QGroupBox("🔗 MM Mesh Status")
-        mm_layout = QVBoxLayout()
-
-        self.mm_display = QTextEdit()
-        self.mm_display.setReadOnly(True)
-        self.mm_display.setMaximumHeight(120)
-        self.mm_display.setStyleSheet("""
-            QTextEdit {
-                background-color: #2d2d2d;
-                color: #10b981;
-                font-family: 'Courier New', monospace;
-                font-size: 9pt;
-                padding: 5px;
-            }
-        """)
-        mm_layout.addWidget(self.mm_display)
-
-        mm_group.setLayout(mm_layout)
-        layout.addWidget(mm_group)
 
         # Communications Log (60%)
         log_group = QGroupBox("📡 Communications Log")
@@ -225,7 +192,7 @@ class EEMonitorWindow(QMainWindow):
 
         self.comms_log = QTextEdit()
         self.comms_log.setReadOnly(True)
-        self.comms_log.setMinimumHeight(500)
+        self.comms_log.setMinimumHeight(550)
         self.comms_log.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e1e;
@@ -266,8 +233,8 @@ class EEMonitorWindow(QMainWindow):
         ts = datetime.now().strftime("%H:%M:%S")
         full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        html = f'<span style="color:#8b5cf6;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | MM SEND → {service}</span><br>'
-        html += f'<span style="color:#a78bfa;">  {method}: {json.dumps(payload, indent=2)}</span><br><br>'
+        html = f'<span style="color:#8b5cf6;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | MM SEND</span><br>'
+        html += f'<span style="color:#a78bfa;">  {json.dumps(payload)}</span><br><br>'
         self.comms_log.append(html)
         self._scroll_to_bottom()
 
@@ -278,13 +245,39 @@ class EEMonitorWindow(QMainWindow):
         ts = datetime.now().strftime("%H:%M:%S")
         full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        html = f'<span style="color:#10b981;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | MM RECV ← {service}</span><br>'
-        html += f'<span style="color:#34d399;">  {method}: {json.dumps(payload, indent=2)}</span><br><br>'
+        display_msg = payload.get("message", "")
+
+        html = f'<span style="color:#10b981;font-weight:bold;">[{ts}] CYCLE {self.current_cycle} | MM RECV</span><br>'
+        if display_msg:
+            html += f'<span style="color:#34d399;font-weight:bold;">  → {display_msg}</span><br>'
+        html += f'<span style="color:#34d399;">  {json.dumps(payload)}</span><br><br>'
         self.comms_log.append(html)
         self._scroll_to_bottom()
 
         self.log_to_file(f"EE: [{full_ts}] CYCLE {self.current_cycle} | MM RECV ← {service}.{method}")
-        self.log_to_file(f"EE: Payload: {json.dumps(payload)}\n")
+        self.log_to_file(f"EE: Payload: {json.dumps(payload)}")
+        if display_msg:
+            self.log_to_file(f"EE: Display: {display_msg}")
+        self.log_to_file("")
+
+    def log_end_of_cycle(self, cycle: int, last_step: int, next_step: int,
+                         total_steps: int, tokens_used: int, tokens_limit: int):
+        ts = datetime.now().strftime("%H:%M:%S")
+        full_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        pct = (tokens_used / tokens_limit) * 100
+
+        html = f'<span style="color:#f59e0b;font-weight:bold;">[{ts}] ═══ END CYCLE {cycle} ═══</span><br>'
+        html += f'<span style="color:#fbbf24;">  Last: {last_step}/{total_steps} | Next: {next_step}/{total_steps}</span><br>'
+        html += f'<span style="color:#fbbf24;">  Tokens: {tokens_used:,}/{tokens_limit:,} ({pct:.1f}%)</span><br><br>'
+        self.comms_log.append(html)
+        self._scroll_to_bottom()
+
+        self.log_to_file(f"EEM: [{full_ts}] {'='*50}")
+        self.log_to_file(f"EEM: END CYCLE {cycle}")
+        self.log_to_file(f"EEM: Last step: {last_step} of {total_steps}")
+        self.log_to_file(f"EEM: Next step: {next_step} of {total_steps}")
+        self.log_to_file(f"EEM: Tokens: {tokens_used:,}/{tokens_limit:,} ({pct:.1f}%)")
+        self.log_to_file(f"EEM: {'='*50}\n")
 
     def log_error(self, message: str):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -329,13 +322,14 @@ class EEMonitorWindow(QMainWindow):
                 self.log_to_file(f"EEM: ❌ MM path not found: {mm_path}")
                 return False
 
+            # Start MM mesh in background
             subprocess.Popen(
                 ["python3", "-m", "mcp_mesh.proxy.server",
                  "--http-only", "--http-port", "6001"],
                 cwd=str(mm_path),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                start_new_session=True
+                start_new_session=True  # Detach from parent
             )
 
             # Wait for it to start (max 10 seconds)
@@ -358,20 +352,8 @@ class EEMonitorWindow(QMainWindow):
                 "http://localhost:6001/register",
                 json={
                     "instance_name": "ee_monitor",
-                    "port": 9998,
-                    "tools": [
-                        {
-                            "name": "log_message",
-                            "description": "Log message to monitor",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "message": {"type": "string"}
-                                },
-                                "required": ["message"]
-                            }
-                        }
-                    ]
+                    "port": 9998,  # Placeholder - EEM doesn't expose tools
+                    "tools": []
                 },
                 timeout=5.0
             )
@@ -380,206 +362,169 @@ class EEMonitorWindow(QMainWindow):
             self.log_to_file(f"EEM: Registration error: {e}")
             return False
 
-    def _update_mm_status(self):
-        """Update MM mesh status display."""
-        if not HTTPX_AVAILABLE:
-            self.mm_display.setPlainText("MM: httpx not available")
+    def _poll_mm_messages(self):
+        """Poll MM mesh for messages from EE instances."""
+        if not HTTPX_AVAILABLE or not self.mm_registered:
             return
 
         try:
+            # Check for registered EE instances
             response = httpx.get("http://localhost:6001/services", timeout=2.0)
             if response.status_code == 200:
-                data = response.json()
-                services = data.get("services", [])
+                services = response.json().get("services", [])
 
-                lines = [f"MM Mesh: {len(services)} services registered"]
-                lines.append("─" * 40)
-
+                # Look for EE cycle instances
                 for svc in services:
-                    name = svc.get("instance_name", "unknown")
-                    tools_count = len(svc.get("tools", []))
-                    status = svc.get("status", "unknown")
-                    lines.append(f"  {name}: {tools_count} tools [{status}]")
+                    instance_name = svc.get("instance_name", "")
+                    if instance_name.startswith("ee_cycle_"):
+                        # EE is registered - update UI if needed
+                        if "Running" not in self.start_btn.text():
+                            self.start_btn.setEnabled(False)
+                            self.start_btn.setText("✅ Running")
+        except Exception:
+            pass  # Silently ignore polling errors
 
-                self.mm_display.setPlainText("\n".join(lines))
-            else:
-                self.mm_display.setPlainText(f"MM: Error {response.status_code}")
-        except Exception as e:
-            self.mm_display.setPlainText(f"MM: Connection error")
-
-    def _update_heartbeat_interval(self, value: int):
-        """Update heartbeat timer interval."""
-        if self.heartbeat_timer.isActive():
-            self.heartbeat_timer.setInterval(value * 1000)
-            self.log_info(f"Heartbeat interval updated: {value}s")
-
-    # Heartbeat Protocol
-    def _heartbeat_check(self):
-        """
-        Heartbeat check - polls EE instance for status.
-
-        This is the ONLY way status updates happen - EE is purely reactive.
-        """
-        if not self.ee_instance_name or not HTTPX_AVAILABLE:
-            return
-
+    def _update_mm_status(self):
+        """Update MM mesh status display from stats file."""
         try:
-            # Call EE's get_status tool via MM mesh
-            response = httpx.post(
-                "http://localhost:6001/call",
-                json={
-                    "target_instance": self.ee_instance_name,
-                    "tool_name": "get_status",
-                    "arguments": {}
-                },
-                timeout=10.0
-            )
+            if not self.mm_stats_file.exists():
+                self.mm_status_label.setText("MM: No stats file")
+                return
 
-            if response.status_code == 200:
-                result = response.json()
+            with open(self.mm_stats_file, 'r') as f:
+                stats = json.load(f)
 
-                # Check if it's a success response with result
-                if result.get("success"):
-                    status = result.get("result", {})
-                    self.log_mm_receive(self.ee_instance_name, "get_status", status)
-                    self._process_status_update(status)
-                else:
-                    # Tool call failed - might mean EE is done or crashed
-                    error = result.get("error", "Unknown error")
-                    self.log_info(f"Heartbeat: EE not responding ({error})")
+            services = stats.get("total_services", 0)
+            messages = stats.get("total_messages", 0)
 
-                    # Check if cycle is complete
-                    if "not found" in error.lower() or "not registered" in error.lower():
-                        self._handle_cycle_end()
-            else:
-                self.log_error(f"Heartbeat failed: {response.status_code}")
+            # Update label with compact format
+            self.mm_status_label.setText(f"MM: {services} services | {messages} msgs")
+            self.mm_status_label.setStyleSheet("color: #10b981;")  # Green when active
 
         except Exception as e:
-            self.log_error(f"Heartbeat error: {e}")
-
-    def _process_status_update(self, status: dict):
-        """Process status update from EE."""
-        step = status.get("step", "?")
-        task = status.get("task", "Working")
-        cycle_status = status.get("cycle_status", "running")
-
-        # Update UI
-        self.step_label.setText(f"Step {step}: {task}")
-
-        # Check for step completion
-        last_step = self.last_status.get("step")
-        if last_step and last_step != step:
-            self.log_info(f"✅ Step {last_step} complete, now on Step {step}")
-
-        # Check for cycle completion
-        if cycle_status == "complete":
-            self._handle_cycle_end(status)
-
-        self.last_status = status
-
-    def _handle_cycle_end(self, final_status: dict = None):
-        """Handle cycle completion."""
-        self.log_info(f"🔴 Cycle {self.current_cycle} COMPLETE")
-
-        if final_status:
-            tokens = final_status.get("tokens_used", "?")
-            progress = final_status.get("progress", "?")
-            self.log_info(f"   Tokens: {tokens}, Progress: {progress}")
-
-        # Stop heartbeat
-        self.heartbeat_timer.stop()
-
-        # Terminate terminal
-        if self.ee_terminal_id:
-            self._terminate_ee_terminal()
-
-        # Enable start button for next cycle
-        self.current_cycle += 1
-        self.cycle_label.setText(f"Cycle: {self.current_cycle}")
-        self.start_btn.setEnabled(True)
-        self.start_btn.setText("🚀 START NEXT CYCLE 🚀")
-
-        self.ee_instance_name = None
-        self.ee_terminal_id = None
-        self.last_status = {}
-
-    def _terminate_ee_terminal(self):
-        """Terminate the EE terminal before starting new cycle."""
-        try:
-            tm = get_terminal_manager()
-
-            if self.ee_terminal_id:
-                self.log_info(f"Terminating terminal: {self.ee_terminal_id}")
-                # Close the terminal
-                tm.close_terminal(self.ee_terminal_id)
-                self.log_info("✅ Terminal terminated")
-        except Exception as e:
-            self.log_error(f"Failed to terminate terminal: {e}")
+            self.mm_status_label.setText(f"MM: Error reading stats")
+            self.mm_status_label.setStyleSheet("color: #ef4444;")  # Red on error
 
     # Cycle management
     def start_cycle(self):
-        """Start new EE cycle."""
         try:
-            # Terminate previous terminal if exists
-            if self.ee_terminal_id:
-                self._terminate_ee_terminal()
-                time.sleep(1)  # Give it time to close
-
             tm = get_terminal_manager()
+
+            if self._is_ee_running():
+                reply = QMessageBox.question(self, "Already Running", 
+                    "Start NEW SPAWNING CYCLE?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+                
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._spawn_continuation(tm)
+                return
+
             self._spawn_new_cycle(tm)
 
         except Exception as e:
             self.log_error(f"Start failed: {str(e)}")
 
     def _spawn_new_cycle(self, tm):
-        """Spawn new EE cycle with proper initialization."""
         token_target = self.token_target_spinbox.value()
-        self.ee_instance_name = f"ee_cycle_{self.current_cycle}"
 
-        # Construct full prompt with registration instructions
-        prompt = f"""Library extraction - Cycle {self.current_cycle}.
-Read plans/NextSteps.md.
-Token target: {token_target}%
+        prompt = f"Library extraction - Cycle {self.current_cycle}.\nRead plans/NextSteps.md.\nToken target: {token_target}%"
 
-FIRST: Register with MM mesh as '{self.ee_instance_name}' and expose get_status tool.
-THEN: Report your starting step number via MM mesh to ee_monitor.
-"""
+        self.log_terminal_inject(f"cd {self.ee_root}", prompt)
 
-        # Log what we're sending
-        self.log_terminal_inject(
-            f"cd {self.ee_root} && claude code",
-            prompt
-        )
-
-        # Spawn terminal with initialization
         terminal_info = tm.spawn_claude_terminal(
             project_path=self.ee_root,
-            session_id=self.ee_instance_name,
+            session_id=f"ee_cycle_{self.current_cycle}",
             label=f"EE CYCLE {self.current_cycle}",
             position="left"
         )
 
-        self.ee_terminal_id = terminal_info["terminal_id"]
-
-        # Inject initialization command
         tm.inject_initialization_command(
-            terminal_id=self.ee_terminal_id,
-            session_id=self.ee_instance_name,
+            terminal_id=terminal_info["terminal_id"],
+            session_id=f"ee_cycle_{self.current_cycle}",
             command=prompt
         )
 
-        # Update UI
+        self.log_mm_send("ee_control", "proceed", {"token_target_pct": token_target})
+
         self.cycle_label.setText(f"Cycle: {self.current_cycle}")
         self.start_btn.setEnabled(False)
         self.start_btn.setText("✅ Running")
 
-        # Start heartbeat timer
-        interval_sec = self.heartbeat_spinbox.value()
-        self.heartbeat_timer.start(interval_sec * 1000)
-
         self.log_info(f"Spawned Cycle {self.current_cycle}")
-        self.log_info(f"Heartbeat: every {interval_sec}s")
-        self.log_info(f"Waiting for {self.ee_instance_name} to register...")
+
+    def _spawn_continuation(self, tm):
+        self.current_cycle += 1
+        token_target = self.token_target_spinbox.value()
+
+        prompt = f"Continue - Cycle {self.current_cycle} (CONTINUATION).\nRead plans/NextSteps.md.\nToken target: {token_target}%"
+
+        self.log_terminal_inject(f"cd {self.ee_root}", prompt)
+
+        terminal_info = tm.spawn_claude_terminal(
+            project_path=self.ee_root,
+            session_id=f"ee_cycle_{self.current_cycle}_cont",
+            label=f"EE CYCLE {self.current_cycle} - CONT",
+            position="left"
+        )
+
+        tm.inject_initialization_command(
+            terminal_id=terminal_info["terminal_id"],
+            session_id=f"ee_cycle_{self.current_cycle}_cont",
+            command=prompt
+        )
+
+        self.cycle_label.setText(f"Cycle: {self.current_cycle}")
+        self.log_info(f"Spawned continuation {self.current_cycle}")
+
+    def _is_ee_running(self) -> bool:
+        if self.next_steps_file.exists():
+            import os
+            mtime = os.path.getmtime(self.next_steps_file)
+            age = (datetime.now().timestamp() - mtime) / 60
+            return age < 5
+        return False
+
+    def on_mm_message_received(self, message: dict):
+        service = message.get("service", "unknown")
+        action = message.get("action", "unknown")
+
+        self.log_mm_receive(service, action, message)
+
+        if action == "step_start":
+            step = message.get("step")
+            total = message.get("total_steps", 15)
+            self.step_label.setText(f"Current: Step {step} of {total}")
+
+        elif action == "step_complete":
+            step = message.get("step")
+            total = message.get("total_steps", 15)
+            self.step_label.setText(f"Completed: Step {step} of {total}")
+
+        elif action == "handoff":
+            self.log_end_of_cycle(
+                self.current_cycle,
+                message.get("last_step"),
+                message.get("next_step"),
+                message.get("total_steps", 15),
+                message.get("tokens_used", 0),
+                message.get("tokens_limit", 200000)
+            )
+            self.current_cycle += 1
+            self.cycle_label.setText(f"Cycle: {self.current_cycle}")
+            self.start_btn.setEnabled(True)
+            self.start_btn.setText("🚀 START NEXT CYCLE 🚀")
+
+    def check_ee_status(self):
+        if not self.next_steps_file.exists():
+            return
+        try:
+            import re
+            content = self.next_steps_file.read_text()
+            next_match = re.search(r'\*\*Next step:\*\*\s*Step (\d+)', content)
+            if next_match and "Current:" not in self.step_label.text():
+                self.step_label.setText(f"Next: Step {next_match.group(1)} of 15")
+        except:
+            pass
 
 
 def main():
