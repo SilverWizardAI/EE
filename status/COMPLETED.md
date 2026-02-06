@@ -1,6 +1,33 @@
 # EE - Completed Work
 
-**Last Updated:** 2026-02-06 (Post-Library Session)
+**Last Updated:** 2026-02-06 (SW2 App Builder Fixes)
+
+---
+
+## SW2 App Builder Bug Fixes ⚠️
+
+**Date:** 2026-02-06
+**Session:** Component activation and layout fixes
+**Status:** ⚠️ Partially complete - settings tab issue remains
+
+### Summary
+Fixed SW2 App Builder to properly activate selected library features and separate tabs correctly. Fixed `is_connected()` → `is_available()` API bug. **Note:** User-created Settings tabs still empty - feature demos only in Features Demo tab.
+
+### Issues Fixed
+- ✅ Fixed `AttributeError: 'MeshIntegration' object has no attribute 'is_connected'`
+  - Changed to correct method: `is_available()`
+- ✅ Fixed tab duplication bug where all tabs showed same feature demos
+  - Refactored `_build_*_demo_ui()` methods with `use_features_layout` parameter
+- ✅ Fixed component activation - mesh, module_monitor flags now passed to BaseApplication
+
+### Remaining Issues
+- ❌ User-defined "Settings" tabs don't automatically include theme controls
+- ❌ Feature demos only appear in "Features Demo" tab, not in user's custom tabs
+
+### Files Modified
+- **apps/SW2_App_Builder/app_builder_engine.py**: Fixed layout targeting, API calls
+- **apps/Test App/main.py**: Patched with correct API method
+- **apps/TestTabFix/**: Generated with fixes (tabs properly separated)
 
 ---
 
