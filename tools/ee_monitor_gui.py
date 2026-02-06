@@ -36,6 +36,20 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from sw_core import get_terminal_manager
 
+# Add MM mesh to path
+mm_path = Path.home() / "Library/CloudStorage/Dropbox/A_Coding/MM"
+if mm_path.exists():
+    sys.path.insert(0, str(mm_path))
+    try:
+        from mcp_mesh.client import MeshClient
+        MESH_CLIENT_AVAILABLE = True
+    except ImportError:
+        MESH_CLIENT_AVAILABLE = False
+        MeshClient = None
+else:
+    MESH_CLIENT_AVAILABLE = False
+    MeshClient = None
+
 
 class EEMonitorWindow(QMainWindow):
     """EE Monitor with heartbeat-driven protocol."""
@@ -62,9 +76,11 @@ class EEMonitorWindow(QMainWindow):
         self.log_to_file(f"EEM: EE Monitor started at {datetime.now().isoformat()}")
         self.log_to_file(f"EEM: {'='*60}\n")
 
-        # MM Mesh Setup
-        self.mm_registered = False
-        if HTTPX_AVAILABLE:
+        # MM Mesh Setup with MeshClient
+        self.mesh = None
+        self.mm_connected = False
+
+        if MESH_CLIENT_AVAILABLE and HTTPX_AVAILABLE:
             self.log_to_file("EEM: Checking if MM mesh is running...")
 
             if not self._check_mm_running():
@@ -76,16 +92,21 @@ class EEMonitorWindow(QMainWindow):
             else:
                 self.log_to_file("EEM: ✅ MM mesh already running")
 
-            # Register EEM with MM mesh
+            # Initialize MeshClient
             if self._check_mm_running():
-                self.log_to_file("EEM: Registering with MM mesh...")
-                if self._register_with_mm():
-                    self.log_to_file("EEM: ✅ Registered with MM as 'ee_monitor'")
-                    self.mm_registered = True
-                else:
-                    self.log_to_file("EEM: ⚠️ Failed to register with MM")
+                try:
+                    self.mesh = MeshClient(proxy_host="localhost", proxy_port=6001)
+                    self.mm_connected = True
+                    self.log_to_file("EEM: ✅ MeshClient initialized")
+                except Exception as e:
+                    self.log_to_file(f"EEM: ⚠️ Failed to initialize MeshClient: {e}")
         else:
-            self.log_to_file("EEM: ⚠️ httpx not available - MM mesh integration disabled\n")
+            reasons = []
+            if not MESH_CLIENT_AVAILABLE:
+                reasons.append("MeshClient not available")
+            if not HTTPX_AVAILABLE:
+                reasons.append("httpx not available")
+            self.log_to_file(f"EEM: ⚠️ MM mesh integration disabled: {', '.join(reasons)}\n")
 
         self.init_ui()
 
@@ -416,46 +437,36 @@ class EEMonitorWindow(QMainWindow):
     # Heartbeat Protocol
     def _heartbeat_check(self):
         """
-        Heartbeat check - polls EE instance for status.
+        Heartbeat check - polls EE instance for status via MeshClient.
 
         This is the ONLY way status updates happen - EE is purely reactive.
         """
-        if not self.ee_instance_name or not HTTPX_AVAILABLE:
+        if not self.ee_instance_name or not self.mesh:
             return
 
         try:
-            # Call EE's get_status tool via MM mesh
-            response = httpx.post(
-                "http://localhost:6001/call",
-                json={
-                    "target_instance": self.ee_instance_name,
-                    "tool_name": "get_status",
-                    "arguments": {}
-                },
+            # Call EE's get_status tool via MeshClient
+            self.log_mm_send(self.ee_instance_name, "get_status", {})
+
+            status = self.mesh.call_service(
+                target_instance=self.ee_instance_name,
+                tool_name="get_status",
+                arguments={},
                 timeout=10.0
             )
 
-            if response.status_code == 200:
-                result = response.json()
-
-                # Check if it's a success response with result
-                if result.get("success"):
-                    status = result.get("result", {})
-                    self.log_mm_receive(self.ee_instance_name, "get_status", status)
-                    self._process_status_update(status)
-                else:
-                    # Tool call failed - might mean EE is done or crashed
-                    error = result.get("error", "Unknown error")
-                    self.log_info(f"Heartbeat: EE not responding ({error})")
-
-                    # Check if cycle is complete
-                    if "not found" in error.lower() or "not registered" in error.lower():
-                        self._handle_cycle_end()
-            else:
-                self.log_error(f"Heartbeat failed: {response.status_code}")
+            # Success - process status
+            self.log_mm_receive(self.ee_instance_name, "get_status", status)
+            self._process_status_update(status)
 
         except Exception as e:
-            self.log_error(f"Heartbeat error: {e}")
+            error_str = str(e)
+            self.log_error(f"Heartbeat failed: {error_str}")
+
+            # Check if cycle is complete (service not found)
+            if "not found" in error_str.lower() or "not available" in error_str.lower():
+                self.log_info("EE instance no longer registered - cycle may be complete")
+                self._handle_cycle_end()
 
     def _process_status_update(self, status: dict):
         """Process status update from EE."""
