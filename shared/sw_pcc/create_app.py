@@ -302,9 +302,9 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel
 )
 
-from base_application import BaseApplication, create_application
-from parent_cc_protocol import ParentCCProtocol, RequestPriority
-from version_info._version_data import VERSION
+from sw_core.base_application import BaseApplication, create_application
+from sw_core.parent_cc_protocol import ParentCCProtocol, RequestPriority
+from sw_core.version_info import get_version
 
 
 class {app_name.replace(" ", "")}(BaseApplication):
@@ -370,7 +370,7 @@ class {app_name.replace(" ", "")}(BaseApplication):
 
 
 if __name__ == "__main__":
-    sys.exit(create_application({app_name.replace(" ", "")}, "{app_name}", VERSION))
+    sys.exit(create_application({app_name.replace(" ", "")}, "{app_name}", get_version()))
 '''
 
     with open(main_py, 'w') as f:
@@ -404,9 +404,9 @@ from PyQt6.QtWidgets import (
     QPushButton, QTextEdit, QLineEdit
 )
 
-from base_application import BaseApplication, create_application
-from parent_cc_protocol import ParentCCProtocol
-from version_info._version_data import VERSION
+from sw_core.base_application import BaseApplication, create_application
+from sw_core.parent_cc_protocol import ParentCCProtocol
+from sw_core.version_info import get_version
 
 
 class {app_name.replace(" ", "")}(BaseApplication):
@@ -485,7 +485,7 @@ class {app_name.replace(" ", "")}(BaseApplication):
 
 if __name__ == "__main__":
     from datetime import datetime
-    sys.exit(create_application({app_name.replace(" ", "")}, "{app_name}", VERSION))
+    sys.exit(create_application({app_name.replace(" ", "")}, "{app_name}", get_version()))
 '''
 
     with open(main_py, 'w') as f:
