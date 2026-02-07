@@ -25,7 +25,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QTextEdit, QGroupBox, QPushButton, QSpinBox, QMessageBox,
-    QTabWidget
+    QTabWidget, QComboBox
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QTextCursor
@@ -265,6 +265,23 @@ class EEMonitorWindow(QMainWindow):
         self.start_btn.clicked.connect(self.start_cycle)
         layout.addWidget(self.start_btn)
 
+        # Plan Selector
+        plan_group = QGroupBox("📋 Plan Selection")
+        plan_layout = QHBoxLayout()
+
+        plan_label = QLabel("Plan:")
+        plan_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        plan_layout.addWidget(plan_label)
+
+        self.plan_selector = QComboBox()
+        self.plan_selector.setFont(QFont("Arial", 12))
+        self.plan_selector.setMinimumHeight(35)
+        self._load_available_plans()
+        plan_layout.addWidget(self.plan_selector, 1)
+
+        plan_group.setLayout(plan_layout)
+        layout.addWidget(plan_group)
+
         # Tab Widget
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
@@ -358,6 +375,9 @@ class EEMonitorWindow(QMainWindow):
         log_group.setLayout(log_layout)
         monitor_layout.addWidget(log_group)
 
+        # Add 20pt bottom border/spacing
+        monitor_layout.addSpacing(20)
+
         self.tabs.addTab(monitor_tab, "📊 Monitor")
 
         # Settings Tab
@@ -445,6 +465,25 @@ class EEMonitorWindow(QMainWindow):
 
         self.log_info("EE Monitor started")
         self.log_info(f"Log file: {self.log_file}")
+
+    def _load_available_plans(self):
+        """Load available plans from plans/ directory."""
+        plans_dir = self.ee_root / "plans"
+
+        # Default option
+        self.plan_selector.addItem("NextSteps.md (Default)", "plans/NextSteps.md")
+
+        # Load markdown plans from plans/ directory
+        if plans_dir.exists():
+            plan_files = sorted(plans_dir.glob("Plan*.md"))
+            for plan_file in plan_files:
+                plan_name = plan_file.name
+                relative_path = f"plans/{plan_name}"
+                self.plan_selector.addItem(plan_name, relative_path)
+
+        # If no plans found, just use default
+        if self.plan_selector.count() == 1:
+            self.log_to_file("EEM: No Plan*.md files found in plans/ directory")
 
     # Logging methods
     def log_terminal_inject(self, command: str, prompt: str):
