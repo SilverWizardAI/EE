@@ -25,7 +25,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QTextEdit, QGroupBox, QPushButton, QSpinBox, QMessageBox,
-    QTabWidget, QComboBox
+    QTabWidget, QComboBox, QFileDialog
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor
@@ -268,6 +268,22 @@ class EEMonitorWindow(QMainWindow):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
+        # CRITICAL: Target Project Display (ALWAYS VISIBLE)
+        self.target_display = QLabel(f"📂 Target: {self.ee_root.name}")
+        self.target_display.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.target_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.target_display.setStyleSheet("""
+            QLabel {
+                background-color: #FFD700;
+                color: #000000;
+                padding: 10px;
+                border: 3px solid #FF0000;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+        """)
+        layout.addWidget(self.target_display)
+
         # START BUTTON (always visible)
         self.start_btn = QPushButton("🚀 START CYCLE 🚀")
         self.start_btn.setFont(QFont("Arial", 18, QFont.Weight.Bold))
@@ -345,28 +361,6 @@ class EEMonitorWindow(QMainWindow):
         status_group.setLayout(status_layout)
         monitor_layout.addWidget(status_group)
 
-        # MM Monitoring Window (compact)
-        mm_group = QGroupBox("🔗 MM Mesh")
-        mm_layout = QVBoxLayout()
-
-        self.mm_display = QTextEdit()
-        self.mm_display.setReadOnly(True)
-        self.mm_display.setMaximumHeight(80)
-        self.mm_display.setStyleSheet("""
-            QTextEdit {
-                background-color: black;
-                color: white;
-                font-weight: bold;
-                font-family: 'Courier New', monospace;
-                font-size: 9pt;
-                padding: 5px;
-            }
-        """)
-        mm_layout.addWidget(self.mm_display)
-
-        mm_group.setLayout(mm_layout)
-        monitor_layout.addWidget(mm_group)
-
         # Communications Log (70% of screen)
         log_group = QGroupBox("📡 Communications Log")
         log_layout = QVBoxLayout()
@@ -406,6 +400,25 @@ class EEMonitorWindow(QMainWindow):
         # Configuration Group
         config_group = QGroupBox("⚙️ Cycle Configuration")
         config_layout = QVBoxLayout()
+
+        # Project Directory Selection
+        project_row = QHBoxLayout()
+        project_label = QLabel("Target Project Directory:")
+        project_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        project_row.addWidget(project_label)
+
+        self.project_dir_display = QLabel(str(self.ee_root))
+        self.project_dir_display.setStyleSheet("background-color: #f0f0f0; padding: 5px; border-radius: 3px;")
+        self.project_dir_display.setFont(QFont("Arial", 10))
+        project_row.addWidget(self.project_dir_display, 1)
+
+        browse_btn = QPushButton("📁 Browse...")
+        browse_btn.setMinimumHeight(30)
+        browse_btn.clicked.connect(self._browse_project_directory)
+        project_row.addWidget(browse_btn)
+
+        config_layout.addLayout(project_row)
+        config_layout.addSpacing(20)
 
         # Token Threshold
         token_row = QHBoxLayout()
@@ -482,6 +495,10 @@ class EEMonitorWindow(QMainWindow):
 
         layout.addWidget(self.tabs)
 
+        # Add 20pt bottom margin to main window
+        layout.addSpacing(20)
+        layout.setContentsMargins(10, 10, 10, 20)
+
         self.log_info("CCM started")
         self.log_info(f"Log file: {self.log_file}")
 
@@ -489,20 +506,25 @@ class EEMonitorWindow(QMainWindow):
         """Load available plans from plans/ directory."""
         plans_dir = self.ee_root / "plans"
 
-        # Default option
-        self.plan_selector.addItem("NextSteps.md (Default)", "plans/NextSteps.md")
-
         # Load markdown plans from plans/ directory
         if plans_dir.exists():
             plan_files = sorted(plans_dir.glob("Plan*.md"))
             for plan_file in plan_files:
                 plan_name = plan_file.name
                 relative_path = f"plans/{plan_name}"
-                self.plan_selector.addItem(plan_name, relative_path)
+                # Mark Plan3_v2.md as default
+                if plan_name == "Plan3_v2.md":
+                    self.plan_selector.addItem(f"{plan_name} (Default)", relative_path)
+                else:
+                    self.plan_selector.addItem(plan_name, relative_path)
 
-        # If no plans found, just use default
-        if self.plan_selector.count() == 1:
+        # Add NextSteps.md as fallback option
+        self.plan_selector.addItem("NextSteps.md", "plans/NextSteps.md")
+
+        # If no plans found, show warning
+        if self.plan_selector.count() == 0:
             self.log_to_file("EEM: No Plan*.md files found in plans/ directory")
+            self.plan_selector.addItem("NextSteps.md (Fallback)", "plans/NextSteps.md")
 
     # Logging methods
     def log_terminal_inject(self, command: str, prompt: str):
@@ -631,37 +653,67 @@ class EEMonitorWindow(QMainWindow):
             return False
 
     def _update_mm_status(self):
-        """Update MM mesh status display."""
-        if not HTTPX_AVAILABLE:
-            self.mm_display.setPlainText("MM: httpx not available")
-            return
-
-        try:
-            response = httpx.get("http://localhost:6001/services", timeout=2.0)
-            if response.status_code == 200:
-                data = response.json()
-                services = data.get("services", [])
-
-                lines = [f"MM Mesh: {len(services)} services registered"]
-                lines.append("─" * 40)
-
-                for svc in services:
-                    name = svc.get("instance_name", "unknown")
-                    tools_count = len(svc.get("tools", []))
-                    status = svc.get("status", "unknown")
-                    lines.append(f"  {name}: {tools_count} tools [{status}]")
-
-                self.mm_display.setPlainText("\n".join(lines))
-            else:
-                self.mm_display.setPlainText(f"MM: Error {response.status_code}")
-        except Exception as e:
-            self.mm_display.setPlainText(f"MM: Connection error")
+        """Update MM mesh status display (REMOVED - UI widget no longer exists)."""
+        pass
 
     def _update_heartbeat_interval(self, value: int):
         """Update heartbeat timer interval."""
         if self.heartbeat_timer.isActive():
             self.heartbeat_timer.setInterval(value * 1000)
             self.log_info(f"Heartbeat interval updated: {value}s")
+
+    def _browse_project_directory(self):
+        """Allow user to select a different target project directory."""
+        current_dir = str(self.ee_root)
+        new_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Target Claude Code Project Directory",
+            current_dir,
+            QFileDialog.Option.ShowDirsOnly
+        )
+
+        if new_dir and new_dir != current_dir:
+            self.ee_root = Path(new_dir)
+            self.next_steps_file = self.ee_root / "plans" / "NextSteps.md"
+            self.project_dir_display.setText(str(self.ee_root))
+
+            # Update PROMINENT home screen display
+            self.target_display.setText(f"📂 Target: {self.ee_root.name}")
+
+            self.log_info(f"✅ Target project changed to: {self.ee_root}")
+
+            # Reload available plans from new directory
+            self.plan_selector.clear()
+            self._load_available_plans()
+
+    def _cleanup_and_initialize_state(self):
+        """Clean up old state and initialize for fresh Cycle 1 start."""
+        import json
+
+        self.log_info("🧹 Cleaning up old state for fresh Cycle 1...")
+
+        # Remove old state files
+        state_file = self.ee_root / "cycle_state.json"
+        config_file = self.ee_root / "ee_config.json"
+
+        if state_file.exists():
+            state_file.unlink()
+            self.log_info("  ✅ Removed old cycle_state.json")
+
+        if config_file.exists():
+            config_file.unlink()
+            self.log_info("  ✅ Removed old ee_config.json")
+
+        # Initialize fresh state for Cycle 1, Step 1
+        initial_state = {
+            "current_cycle": 1,
+            "current_step": 1,
+            "completed_steps": [],
+            "started_at": datetime.now().isoformat()
+        }
+
+        state_file.write_text(json.dumps(initial_state, indent=2))
+        self.log_info("  ✅ Created fresh cycle_state.json (Cycle 1, Step 1)")
 
     # Heartbeat Protocol
     def _heartbeat_check(self):
@@ -811,30 +863,20 @@ class EEMonitorWindow(QMainWindow):
         token_target = self.token_target_spinbox.value()
         self.ee_instance_name = f"ee_cycle_{self.current_cycle}"
 
-        # Construct full prompt with MM mesh integration
-        prompt = f"""EE Cycle {self.current_cycle} - Read plans/NextSteps.md
-Token target: {token_target}%
+        # Get selected plan file
+        selected_plan = self.plan_selector.currentData()
+        if not selected_plan:
+            selected_plan = "plans/Plan3_v2.md"
 
-CRITICAL FIRST STEP - Start HTTP Server for MM Mesh:
-```python
-from tools.ee_http_server import init_server, update_status
-server = init_server(cycle_number={self.current_cycle})
-# Server is now running as '{self.ee_instance_name}' on MM mesh
-```
+        # CRITICAL: Clean up and initialize state for Cycle 1
+        if self.current_cycle == 1:
+            self._cleanup_and_initialize_state()
 
-Throughout your work, update status:
-```python
-update_status(step=1, task="Description", progress="10%", tokens_used=15000)
-update_status(step=2, task="Next task", progress="45%")
-# When complete:
-update_status(cycle_status="complete", progress="100%")
-```
-
-I (EEM) will poll your status every 30 seconds via MM mesh.
-When you mark cycle_status="complete", I'll detect it and start the next cycle.
-
-Now begin your work.
-"""
+        # ULTRA-SHORT PROMPT (TCC analysis: 35x efficiency improvement)
+        # Format: C{cycle}|{threshold}%|{plan_file}
+        # Example: C1|35%|plans/Plan3_v2.md
+        # All instructions are IN the plan file - prompt just provides context
+        prompt = f"C{self.current_cycle}|{token_target}%|{selected_plan}"
 
         # Log what we're sending
         self.log_terminal_inject(
@@ -869,14 +911,23 @@ Now begin your work.
         self.heartbeat_timer.start(interval_sec * 1000)
 
         self.log_info(f"🚀 Spawned Cycle {self.current_cycle}: {self.ee_instance_name}")
-        self.log_info(f"📡 Heartbeat polling every {interval_sec}s via MM mesh")
-        self.log_info(f"⏳ Waiting for EE to start HTTP server and register...")
-        self.log_info(f"💡 EE will call: init_server(cycle_number={self.current_cycle})")
+        self.log_info(f"📋 Plan: {selected_plan}")
+        self.log_info(f"🎯 Token target: {token_target}%")
 
 
 def main():
     app = QApplication(sys.argv)
-    window = EEMonitorWindow(Path(__file__).parent.parent)
+
+    # CRITICAL: Set icon on QApplication for macOS (not just window!)
+    app.setWindowIcon(create_ccm_icon())
+
+    # Default to CCM_Test as target project
+    default_target = Path.home() / "Library/CloudStorage/Dropbox/A_Coding/CCM_Test"
+    if not default_target.exists():
+        # Fallback to EE if CCM_Test doesn't exist
+        default_target = Path(__file__).parent.parent
+
+    window = EEMonitorWindow(default_target)
     window.show()
     sys.exit(app.exec())
 
