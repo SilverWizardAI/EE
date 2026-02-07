@@ -1,6 +1,46 @@
 # EE - Completed Work
 
-**Last Updated:** 2026-02-06 (SW2 Intelligent Matching IMPLEMENTED ✅)
+**Last Updated:** 2026-02-07 (CCM MCP Architecture IMPLEMENTED ⚠️ Testing)
+
+---
+
+## CCM - Real MCP Server + Access Proxy Architecture ⚠️ TESTING
+
+**Date:** 2026-02-07
+**Session:** Unix socket MCP architecture implementation
+**Status:** ⚠️ Architecture complete, testing MCP tool availability
+
+### Summary
+Implemented Unix socket-based MCP architecture for CCM monitoring. Real MCP Server runs as background thread in CCM, MCP Access Proxy provides stdio bridge for TCC.
+
+### Architecture
+- **Real MCP Server** (mcp_real_server.py): Background thread in CCM, listens on Unix socket
+- **MCP Access Proxy** (mcp_access_proxy.py): Stdio subprocess spawned by TCC, bridges to Real Server
+- **Unix Socket**: `/tmp/ccm_session_<uuid>.sock` for optimized local IPC
+- **Qt Signals**: Thread-safe communication between MCP thread and GUI thread
+
+### What Changed
+- ✅ Created mcp_real_server.py (100 lines) - Real MCP Server with Unix socket listener
+- ✅ Created mcp_access_proxy.py (255 lines) - Stdio bridge to Real Server
+- ✅ Updated ccm_v3.py - Spawn Real MCP Server thread on startup
+- ✅ Updated tcc_setup.py - Instrument project with MCP config
+- ⚠️ **TESTING**: MCP config location (global vs project-specific)
+
+### Current Issue - MCP Tool Not Available
+TCC reports `log_message` tool not available in tool list. Investigating config file location:
+- **Hypothesis 1**: Need global config `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Hypothesis 2**: Project-specific `.claude/claude_desktop_config.json` should work but may have format issue
+
+### Files Created/Modified
+- **CCM_V3/mcp_real_server.py**: NEW - Real MCP Server (background thread)
+- **CCM_V3/mcp_access_proxy.py**: NEW - Stdio Access Proxy (subprocess)
+- **CCM_V3/ccm_v3.py**: MODIFIED - Spawn Real MCP Server on startup
+- **CCM_V3/tcc_setup.py**: MODIFIED - Write MCP config (location TBD)
+
+### Next Steps
+1. Verify correct MCP config file location for Claude Code CLI
+2. Test MCP tool availability in TCC session
+3. Confirm end-to-end communication: TCC → Access Proxy → Real Server → CCM GUI
 
 ---
 
