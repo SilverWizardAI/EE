@@ -26,7 +26,8 @@ class TCCSetup:
     @staticmethod
     def instrument_project(
         project_path: Path,
-        mcp_socket_path: Path
+        mcp_socket_path: Path,
+        plan_file: str = "Plan_2.md"
     ) -> dict:
         """
         Instrument a project for TCC monitoring.
@@ -34,10 +35,13 @@ class TCCSetup:
         Creates:
         1. .claude/mcp_settings.json - Points to MCP Access Proxy
         2. .claude/settings.json - SessionStart hook sends "TCC started"
+        3. Plan.md - Copy of selected plan from plans directory
+        4. Next_Steps.md - State persistence file
 
         Args:
             project_path: Path to project directory
             mcp_socket_path: Unix socket path of Real MCP Server
+            plan_file: Name of plan file to use (e.g., "Plan_2.md")
 
         Returns:
             dict with status and files created
@@ -68,9 +72,9 @@ class TCCSetup:
         claude_md_file = claude_dir / "CLAUDE.md"
         TCCSetup._write_monitoring_instructions(claude_md_file, mcp_socket_path)
 
-        # Copy Plan_2.md to project root
-        plan_file = project_path / "Plan.md"
-        TCCSetup._copy_plan_to_project(plan_file)
+        # Copy selected plan to project root
+        plan_target = project_path / "Plan.md"
+        TCCSetup._copy_plan_to_project(plan_target, plan_file)
 
         # Create Next_Steps.md if doesn't exist
         next_steps_file = project_path / "Next_Steps.md"
@@ -242,17 +246,23 @@ The plan will tell you what messages to send to CCM and when. Follow it precisel
         logger.info(f"✅ Monitoring instructions written: {file_path}")
 
     @staticmethod
-    def _copy_plan_to_project(target_path: Path):
+    def _copy_plan_to_project(target_path: Path, plan_filename: str):
         """
-        Copy Plan_2.md from plans directory to project root as Plan.md
+        Copy selected plan from plans directory to project root as Plan.md
+
+        Args:
+            target_path: Path where Plan.md should be created
+            plan_filename: Name of plan file to copy (e.g., "Plan_2.md")
         """
-        # Get path to Plan_2.md
-        plan_source = Path(__file__).parent / "plans" / "Plan_2.md"
+        # Get path to source plan
+        plan_source = Path(__file__).parent / "plans" / plan_filename
 
         if not plan_source.exists():
-            logger.warning(f"Plan_2.md not found at {plan_source}")
+            logger.warning(f"{plan_filename} not found at {plan_source}")
             # Create a simple default plan
-            default_plan = """# Test Plan
+            default_plan = f"""# Test Plan
+
+Plan file '{plan_filename}' not found.
 
 Execute the steps as defined in this plan.
 """
@@ -260,7 +270,7 @@ Execute the steps as defined in this plan.
             logger.info(f"✅ Created default Plan.md")
             return
 
-        # Copy Plan_2.md to project as Plan.md
+        # Copy selected plan to project as Plan.md
         import shutil
         shutil.copy2(plan_source, target_path)
-        logger.info(f"✅ Copied Plan_2.md to {target_path}")
+        logger.info(f"✅ Copied {plan_filename} to {target_path}")

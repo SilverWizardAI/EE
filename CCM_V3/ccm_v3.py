@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QTextEdit, QGroupBox, QPushButton, QFileDialog
+    QLabel, QTextEdit, QGroupBox, QPushButton, QFileDialog, QComboBox
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor
@@ -97,6 +97,7 @@ class CCMWindow(QMainWindow):
         # Multi-cycle orchestration
         self.current_cycle = 0  # 0 = not started, 1+ = cycle number
         self.plan_active = False  # True when plan is being executed
+        self.selected_plan = None  # Selected plan file name (e.g., "Plan_2.md")
 
         # Logging
         self.log_dir = Path(__file__).parent / "logs"
@@ -177,6 +178,26 @@ class CCMWindow(QMainWindow):
 
         proj_group.setLayout(proj_layout)
         layout.addWidget(proj_group)
+
+        # Plan selection
+        plan_group = QGroupBox("📋 Test Plan")
+        plan_layout = QVBoxLayout()
+
+        self.plan_combo = QComboBox()
+        self.plan_combo.setMinimumHeight(35)
+        self.plan_combo.currentTextChanged.connect(self._on_plan_selected)
+        plan_layout.addWidget(self.plan_combo)
+
+        self.plan_description = QLabel("No plan selected")
+        self.plan_description.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
+        self.plan_description.setWordWrap(True)
+        plan_layout.addWidget(self.plan_description)
+
+        plan_group.setLayout(plan_layout)
+        layout.addWidget(plan_group)
+
+        # Load available plans
+        self._load_plans()
 
         # Status
         status_group = QGroupBox("📊 Status")
@@ -274,6 +295,95 @@ class CCMWindow(QMainWindow):
         if self.project_dir:
             self.settings.set("last_project_path", str(self.project_dir))
 
+    def _load_plans(self):
+        """Load available plans from plans directory."""
+        plans_dir = Path(__file__).parent / "plans"
+        if not plans_dir.exists():
+            self.plan_combo.addItem("No plans available")
+            return
+
+        # Find all plan files
+        plan_files = sorted(plans_dir.glob("Plan_*.md"))
+        if not plan_files:
+            self.plan_combo.addItem("No plans available")
+            return
+
+        # Add plans to combo box
+        for plan_file in plan_files:
+            metadata = self._parse_plan_metadata(plan_file)
+            display_name = f"{plan_file.stem} - {metadata['status']}"
+            self.plan_combo.addItem(display_name, userData=plan_file.name)
+
+        # Select first active plan (or first plan if none active)
+        for i in range(self.plan_combo.count()):
+            if "Active" in self.plan_combo.itemText(i) or "ACTIVE" in self.plan_combo.itemText(i):
+                self.plan_combo.setCurrentIndex(i)
+                break
+
+    def _parse_plan_metadata(self, plan_file: Path) -> dict:
+        """Parse plan file to extract metadata."""
+        try:
+            content = plan_file.read_text()
+            lines = content.split('\n')
+
+            metadata = {
+                'title': plan_file.stem,
+                'status': 'Unknown',
+                'objective': 'No description available',
+                'steps': 'Unknown',
+                'cycles': 'Unknown'
+            }
+
+            # Parse metadata from plan file
+            for i, line in enumerate(lines[:30]):  # Check first 30 lines
+                if line.startswith('**Status:**'):
+                    metadata['status'] = line.split('**Status:**')[1].strip()
+                elif line.startswith('**Objective:**'):
+                    metadata['objective'] = line.split('**Objective:**')[1].strip()
+                elif line.startswith('**Total Steps:**'):
+                    metadata['steps'] = line.split('**Total Steps:**')[1].strip()
+                elif line.startswith('**Cycles:**'):
+                    metadata['cycles'] = line.split('**Cycles:**')[1].strip()
+
+            return metadata
+
+        except Exception as e:
+            logger.error(f"Failed to parse plan metadata: {e}")
+            return {
+                'title': plan_file.stem,
+                'status': 'Unknown',
+                'objective': 'Failed to read plan',
+                'steps': 'Unknown',
+                'cycles': 'Unknown'
+            }
+
+    def _on_plan_selected(self, text: str):
+        """Handle plan selection change."""
+        if not text or text == "No plans available":
+            self.selected_plan = None
+            self.plan_description.setText("No plan selected")
+            return
+
+        # Get plan file name from combo box userData
+        idx = self.plan_combo.currentIndex()
+        plan_filename = self.plan_combo.itemData(idx)
+        self.selected_plan = plan_filename
+
+        # Load and display plan metadata
+        plans_dir = Path(__file__).parent / "plans"
+        plan_file = plans_dir / plan_filename
+        metadata = self._parse_plan_metadata(plan_file)
+
+        # Format description
+        description = (
+            f"<b>Status:</b> {metadata['status']}<br>"
+            f"<b>Steps:</b> {metadata['steps']} | <b>Cycles:</b> {metadata['cycles']}<br>"
+            f"<b>Objective:</b> {metadata['objective']}"
+        )
+        self.plan_description.setText(description)
+
+        self._log(f"📋 Plan selected: {plan_filename}")
+
     def _select_project(self):
         """Let user select project directory."""
         project_dir = QFileDialog.getExistingDirectory(
@@ -300,11 +410,19 @@ class CCMWindow(QMainWindow):
             self._log("❌ No project selected")
             return
 
+        if not self.selected_plan:
+            self._log("❌ No plan selected")
+            return
+
         try:
             # Instrument project
-            self._log("🔧 Instrumenting project...")
-            TCCSetup.instrument_project(self.project_dir, self.mcp_socket_path)
-            self._log("✅ Project instrumented (MCP + SessionStart hook)")
+            self._log(f"🔧 Instrumenting project with {self.selected_plan}...")
+            TCCSetup.instrument_project(
+                self.project_dir,
+                self.mcp_socket_path,
+                plan_file=self.selected_plan
+            )
+            self._log(f"✅ Project instrumented (MCP + SessionStart hook + {self.selected_plan})")
 
             # Spawn terminal
             self._log("🚀 Spawning TCC terminal...")
