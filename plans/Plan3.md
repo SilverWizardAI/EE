@@ -30,6 +30,10 @@ This plan implements a complete CC orchestration system where:
 ```
 User sets: 35% → TCC gets max_token_percent=35
 At 200K budget: 35% = 70,000 tokens
+
+CRITICAL: This is the threshold BEFORE STARTING a step!
+- At 69,999 tokens: ✅ Can start new step
+- At 70,000 tokens: ❌ Cannot start new step, close cycle instead
 ```
 
 **Purpose:** Prevents starting work that can't be completed within token budget

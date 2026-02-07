@@ -62,9 +62,13 @@ Report: "Step X completed: Tokens: Y%; Status: OK/NOK, updated & pushed"
 5. Adjust for next cycle if needed
 
 **Example Values:**
-- `25%` - Conservative (50K of 200K) - More cycles, safer
-- `35%` - **Default** (70K of 200K) - Balanced
-- `50%` - Aggressive (100K of 200K) - Fewer cycles, riskier
+- `25%` - Conservative (50K tokens **before starting step**) - More cycles, safer
+- `35%` - **Default** (70K tokens **before starting step**) - Balanced
+- `50%` - Aggressive (100K tokens **before starting step**) - Fewer cycles, riskier
+
+**CRITICAL:** Threshold applies **BEFORE STARTING** each step, not before stopping!
+- At 69,999 tokens: ✅ TCC can start new step
+- At 70,000 tokens: ❌ TCC closes cycle instead
 
 ---
 
@@ -72,7 +76,13 @@ Report: "Step X completed: Tokens: Y%; Status: OK/NOK, updated & pushed"
 
 ### Pre-Step Token Check
 
-**Before starting ANY step:**
+**CRITICAL: Check BEFORE starting ANY step - this is the gate!**
+
+At 35% threshold with 200K budget, that's 70,000 tokens. TCC checks:
+- If current_tokens >= 70,000: **Don't start step** → Close cycle
+- If current_tokens < 70,000: **OK to start** → Proceed with work
+
+**Implementation:**
 
 ```python
 from tools.token_checker import TokenChecker

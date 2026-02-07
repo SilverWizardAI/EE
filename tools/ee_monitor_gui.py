@@ -24,7 +24,8 @@ from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QTextEdit, QGroupBox, QPushButton, QSpinBox, QMessageBox
+    QLabel, QTextEdit, QGroupBox, QPushButton, QSpinBox, QMessageBox,
+    QTabWidget
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QTextCursor
@@ -236,7 +237,7 @@ class EEMonitorWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("🏛️ EE Monitor")
-        self.setGeometry(100, 100, 900, 1100)
+        self.setGeometry(100, 100, 1000, 1200)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -248,15 +249,15 @@ class EEMonitorWindow(QMainWindow):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        # START BUTTON
+        # START BUTTON (always visible)
         self.start_btn = QPushButton("🚀 START CYCLE 🚀")
         self.start_btn.setFont(QFont("Arial", 18, QFont.Weight.Bold))
-        self.start_btn.setMinimumHeight(70)
+        self.start_btn.setMinimumHeight(60)
         self.start_btn.setStyleSheet("""
             QPushButton {
                 background-color: #FF0000;
                 color: white;
-                padding: 20px;
+                padding: 15px;
                 border-radius: 10px;
             }
             QPushButton:hover { background-color: #CC0000; }
@@ -264,65 +265,57 @@ class EEMonitorWindow(QMainWindow):
         self.start_btn.clicked.connect(self.start_cycle)
         layout.addWidget(self.start_btn)
 
-        # Configuration Group
-        config_group = QGroupBox("⚙️ Configuration")
-        config_layout = QVBoxLayout()
+        # Tab Widget
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 2px solid #666;
+                border-radius: 5px;
+            }
+            QTabBar::tab {
+                background: #444;
+                color: white;
+                padding: 10px 20px;
+                margin: 2px;
+                border-radius: 5px;
+                font-size: 12pt;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                background: #FF0000;
+            }
+        """)
 
-        # Token Target
-        token_row = QHBoxLayout()
-        token_label = QLabel("Token Target %:")
-        token_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        token_row.addWidget(token_label)
+        # Monitor Tab
+        monitor_tab = QWidget()
+        monitor_layout = QVBoxLayout(monitor_tab)
 
-        self.token_target_spinbox = QSpinBox()
-        self.token_target_spinbox.setMinimum(20)
-        self.token_target_spinbox.setMaximum(95)
-        self.token_target_spinbox.setValue(35)  # Default: 35% threshold
-        self.token_target_spinbox.setSuffix("%")
-        token_row.addWidget(self.token_target_spinbox)
-        token_row.addStretch()
-        config_layout.addLayout(token_row)
-
-        # Heartbeat Interval
-        heartbeat_row = QHBoxLayout()
-        heartbeat_label = QLabel("Heartbeat Interval (sec):")
-        heartbeat_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        heartbeat_row.addWidget(heartbeat_label)
-
-        self.heartbeat_spinbox = QSpinBox()
-        self.heartbeat_spinbox.setMinimum(30)
-        self.heartbeat_spinbox.setMaximum(600)
-        self.heartbeat_spinbox.setValue(120)  # Default 2 minutes
-        self.heartbeat_spinbox.setSuffix(" sec")
-        self.heartbeat_spinbox.valueChanged.connect(self._update_heartbeat_interval)
-        heartbeat_row.addWidget(self.heartbeat_spinbox)
-        heartbeat_row.addStretch()
-        config_layout.addLayout(heartbeat_row)
-
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group)
-
-        # Status Group
-        status_group = QGroupBox("📊 Current Status")
-        status_layout = QVBoxLayout()
+        # Status Group (compact)
+        status_group = QGroupBox("📊 Status")
+        status_layout = QHBoxLayout()
 
         self.cycle_label = QLabel("Cycle: 1")
-        self.cycle_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.cycle_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         status_layout.addWidget(self.cycle_label)
 
+        status_layout.addSpacing(30)
+
         self.step_label = QLabel("Step: Waiting")
+        self.step_label.setFont(QFont("Arial", 12))
         status_layout.addWidget(self.step_label)
 
-        status_group.setLayout(status_layout)
-        layout.addWidget(status_group)
+        status_layout.addStretch()
 
-        # MM Monitoring Window
-        mm_group = QGroupBox("🔗 MM Mesh Status")
+        status_group.setLayout(status_layout)
+        monitor_layout.addWidget(status_group)
+
+        # MM Monitoring Window (compact)
+        mm_group = QGroupBox("🔗 MM Mesh")
         mm_layout = QVBoxLayout()
 
         self.mm_display = QTextEdit()
         self.mm_display.setReadOnly(True)
-        self.mm_display.setMaximumHeight(120)
+        self.mm_display.setMaximumHeight(80)
         self.mm_display.setStyleSheet("""
             QTextEdit {
                 background-color: black;
@@ -336,15 +329,15 @@ class EEMonitorWindow(QMainWindow):
         mm_layout.addWidget(self.mm_display)
 
         mm_group.setLayout(mm_layout)
-        layout.addWidget(mm_group)
+        monitor_layout.addWidget(mm_group)
 
-        # Communications Log (60%)
+        # Communications Log (70% of screen)
         log_group = QGroupBox("📡 Communications Log")
         log_layout = QVBoxLayout()
 
         self.comms_log = QTextEdit()
         self.comms_log.setReadOnly(True)
-        self.comms_log.setMinimumHeight(500)
+        self.comms_log.setMinimumHeight(700)  # 70% of 1000px height
         self.comms_log.setStyleSheet("""
             QTextEdit {
                 background-color: black;
@@ -357,12 +350,98 @@ class EEMonitorWindow(QMainWindow):
         """)
         log_layout.addWidget(self.comms_log)
 
-        clear_btn = QPushButton("🗑️ Clear Screen Log")
+        clear_btn = QPushButton("🗑️ Clear Log")
+        clear_btn.setMinimumHeight(30)
         clear_btn.clicked.connect(self.clear_screen_log)
         log_layout.addWidget(clear_btn)
 
         log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
+        monitor_layout.addWidget(log_group)
+
+        self.tabs.addTab(monitor_tab, "📊 Monitor")
+
+        # Settings Tab
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
+
+        # Configuration Group
+        config_group = QGroupBox("⚙️ Cycle Configuration")
+        config_layout = QVBoxLayout()
+
+        # Token Threshold
+        token_row = QHBoxLayout()
+        token_label = QLabel("Token Threshold (before starting step):")
+        token_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        token_row.addWidget(token_label)
+
+        self.token_target_spinbox = QSpinBox()
+        self.token_target_spinbox.setMinimum(20)
+        self.token_target_spinbox.setMaximum(95)
+        self.token_target_spinbox.setValue(35)  # Default: 35% threshold
+        self.token_target_spinbox.setSuffix("%")
+        self.token_target_spinbox.setFont(QFont("Arial", 12))
+        token_row.addWidget(self.token_target_spinbox)
+        token_row.addStretch()
+        config_layout.addLayout(token_row)
+
+        token_help = QLabel("At 35% (70K tokens), TCC stops before starting new step")
+        token_help.setStyleSheet("color: #999; font-style: italic;")
+        config_layout.addWidget(token_help)
+
+        config_layout.addSpacing(20)
+
+        # Heartbeat Interval
+        heartbeat_row = QHBoxLayout()
+        heartbeat_label = QLabel("Heartbeat Poll Interval:")
+        heartbeat_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        heartbeat_row.addWidget(heartbeat_label)
+
+        self.heartbeat_spinbox = QSpinBox()
+        self.heartbeat_spinbox.setMinimum(30)
+        self.heartbeat_spinbox.setMaximum(600)
+        self.heartbeat_spinbox.setValue(120)  # Default 2 minutes
+        self.heartbeat_spinbox.setSuffix(" sec")
+        self.heartbeat_spinbox.setFont(QFont("Arial", 12))
+        self.heartbeat_spinbox.valueChanged.connect(self._update_heartbeat_interval)
+        heartbeat_row.addWidget(self.heartbeat_spinbox)
+        heartbeat_row.addStretch()
+        config_layout.addLayout(heartbeat_row)
+
+        heartbeat_help = QLabel("How often EEM polls TCC for status updates")
+        heartbeat_help.setStyleSheet("color: #999; font-style: italic;")
+        config_layout.addWidget(heartbeat_help)
+
+        config_group.setLayout(config_layout)
+        settings_layout.addWidget(config_group)
+
+        # Info Group
+        info_group = QGroupBox("ℹ️ Information")
+        info_layout = QVBoxLayout()
+
+        info_text = QLabel("""
+<b>Token Threshold:</b> TCC checks before EACH step<br>
+• Below threshold: Start step<br>
+• At/Above threshold: Close cycle gracefully<br>
+<br>
+<b>Examples (200K budget):</b><br>
+• 25% = 50,000 tokens (conservative)<br>
+• 35% = 70,000 tokens (default, balanced)<br>
+• 50% = 100,000 tokens (aggressive)<br>
+<br>
+<b>Log File:</b> {0}
+        """.format(self.log_file))
+        info_text.setWordWrap(True)
+        info_text.setStyleSheet("padding: 10px; background-color: #f0f0f0; border-radius: 5px;")
+        info_layout.addWidget(info_text)
+
+        info_group.setLayout(info_layout)
+        settings_layout.addWidget(info_group)
+
+        settings_layout.addStretch()
+
+        self.tabs.addTab(settings_tab, "⚙️ Settings")
+
+        layout.addWidget(self.tabs)
 
         self.log_info("EE Monitor started")
         self.log_info(f"Log file: {self.log_file}")
