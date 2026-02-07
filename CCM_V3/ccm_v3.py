@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from sw_core.terminal_manager import TerminalManager
 from sw_core.settings_manager import SettingsManager
 
-from mcp_server import MCPServer
+from mcp_real_server import RealMCPServer
 from tcc_setup import TCCSetup
 
 
@@ -80,8 +80,12 @@ class CCMWindow(QMainWindow):
         super().__init__()
 
         # Configuration
-        self.ccm_port = 50001
         self.watchdog_timeout_minutes = 2  # Short for testing
+
+        # MCP Real Server socket path (unique per CCM instance)
+        import uuid
+        session_id = uuid.uuid4().hex[:8]
+        self.mcp_socket_path = Path(f"/tmp/ccm_session_{session_id}.sock")
 
         # State
         self.project_dir = None
@@ -103,12 +107,12 @@ class CCMWindow(QMainWindow):
         self.signals = CCMSignals()
         self.signals.tcc_message.connect(self._handle_tcc_message)
 
-        # MCP Server
-        self.mcp_server = MCPServer(
-            port=self.ccm_port,
+        # Real MCP Server (background thread)
+        self.mcp_real_server = RealMCPServer(
+            socket_path=self.mcp_socket_path,
             on_message=self._on_mcp_message
         )
-        self.mcp_server.start()
+        self.mcp_real_server.start()
 
         # Build GUI
         self._build_gui()
@@ -123,12 +127,12 @@ class CCMWindow(QMainWindow):
 
         # Startup message
         self._log("✅ CCM V3 - Iteration 1 started")
-        self._log(f"🌐 MCP server on http://localhost:{self.ccm_port}/mcp")
+        self._log(f"🌐 Real MCP Server: {self.mcp_socket_path}")
         self._log(f"📂 Select project directory to begin")
 
     def _build_gui(self):
         """Build simple single-panel GUI."""
-        self.setWindowTitle(f"🖥️ CCM V3 - Iteration 1 (port {self.ccm_port})")
+        self.setWindowTitle(f"🖥️ CCM V3 - Iteration 1 (MCP via Unix socket)")
 
         # Set custom icon
         self.setWindowIcon(create_ccm_icon())
@@ -183,7 +187,7 @@ class CCMWindow(QMainWindow):
         self.watchdog_label.setStyleSheet("color: gray;")
         status_layout.addWidget(self.watchdog_label)
 
-        self.mcp_label = QLabel(f"MCP Server: localhost:{self.ccm_port}")
+        self.mcp_label = QLabel(f"MCP Server: {self.mcp_socket_path.name}")
         self.mcp_label.setFont(QFont("Courier", 11))
         status_layout.addWidget(self.mcp_label)
 
@@ -295,7 +299,7 @@ class CCMWindow(QMainWindow):
         try:
             # Instrument project
             self._log("🔧 Instrumenting project...")
-            TCCSetup.instrument_project(self.project_dir, self.ccm_port)
+            TCCSetup.instrument_project(self.project_dir, self.mcp_socket_path)
             self._log("✅ Project instrumented (MCP + SessionStart hook)")
 
             # Spawn terminal
@@ -437,7 +441,7 @@ class CCMWindow(QMainWindow):
         if self.tcc_session_id:
             self._stop_tcc()
 
-        self.mcp_server.stop()
+        self.mcp_real_server.stop()
         self.log_fh.close()
 
         event.accept()
