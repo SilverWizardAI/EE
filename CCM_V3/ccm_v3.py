@@ -256,6 +256,22 @@ class CCMWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
         control_layout.addWidget(self.stop_btn)
 
+        # Reset button for clearing all state
+        self.reset_btn = QPushButton("🔄 RESET STATE")
+        self.reset_btn.setMinimumHeight(50)
+        self.reset_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #F57C00; }
+        """)
+        self.reset_btn.clicked.connect(self._reset_all_state)
+        self.reset_btn.setToolTip("Reset cycle counter and Next_Steps.md for fresh start")
+        control_layout.addWidget(self.reset_btn)
+
         layout.addLayout(control_layout)
 
         # Log
@@ -420,6 +436,14 @@ class CCMWindow(QMainWindow):
             return
 
         try:
+            # Clean up state files for fresh start (only if starting from cycle 0)
+            if self.current_cycle == 0:
+                next_steps_file = self.project_dir / "Next_Steps.md"
+                if next_steps_file.exists():
+                    # Reset to Step 1 for fresh start
+                    next_steps_file.write_text("Next: Step 1\n")
+                    self._log("🔄 Reset Next_Steps.md for fresh start")
+
             # Instrument project
             self._log(f"🔧 Instrumenting project with {self.selected_plan}...")
             TCCSetup.instrument_project(
@@ -501,11 +525,49 @@ class CCMWindow(QMainWindow):
         self.tcc_pid = None
         self.watchdog_deadline = None
 
+        # Reset orchestration state for fresh start
+        self.current_cycle = 0
+        self.plan_active = False
+        self.last_message = None
+        self.last_message_time = None
+
         self.tcc_status_label.setText("TCC: Not running")
         self.tcc_status_label.setStyleSheet("color: gray;")
 
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+
+    def _reset_all_state(self):
+        """Reset all orchestration state and clean up project files."""
+        if self.tcc_session_id:
+            reply = QMessageBox.question(
+                self,
+                "Reset State",
+                "TCC is currently running. Stop it and reset all state?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._stop_tcc()
+            else:
+                return
+
+        self._log("🔄 Resetting all state...")
+
+        # Reset cycle counter and flags
+        self.current_cycle = 0
+        self.plan_active = False
+        self.last_message = None
+        self.last_message_time = None
+
+        # Clean up Next_Steps.md
+        if self.project_dir:
+            next_steps_file = self.project_dir / "Next_Steps.md"
+            if next_steps_file.exists():
+                next_steps_file.write_text("Next: Step 1\n")
+                self._log("✅ Reset Next_Steps.md to Step 1")
+
+        self._log("✅ State reset complete - Ready for fresh start")
+        self._log("📊 Cycle counter: 0, Plan active: False")
 
     def _on_mcp_message(self, message: str):
         """Callback from MCP server (runs in MCP thread)."""
