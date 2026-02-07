@@ -41,12 +41,15 @@ class CycleStatus:
     token_threshold: int = 170000  # 85%
     current_task: str = ""
     tasks_completed: list = None
+    steps_completed: list = None  # NEW: Track individual steps
     next_action: str = ""
     last_updated: str = ""
 
     def __post_init__(self):
         if self.tasks_completed is None:
             self.tasks_completed = []
+        if self.steps_completed is None:
+            self.steps_completed = []
         if not self.last_updated:
             self.last_updated = datetime.now().isoformat()
 
@@ -112,7 +115,7 @@ class EEManager:
             Config dictionary with handoff_threshold_percent and token_budget
         """
         default_config = {
-            'handoff_threshold_percent': 20,  # Default 20% for testing
+            'handoff_threshold_percent': 35,  # Default 35% threshold
             'token_budget': 200000
         }
 
@@ -246,6 +249,52 @@ class EEManager:
 
         self._save_cycle_status(status)
         logger.info(f"✅ Updated Cycle {status.cycle_number} progress")
+
+        return status
+
+    def complete_step(
+        self,
+        step_number: int,
+        description: str,
+        tokens_used: Optional[int] = None,
+        status_ok: bool = True
+    ) -> CycleStatus:
+        """
+        Mark a step as completed.
+
+        Args:
+            step_number: Step number (1, 2, 3, ...)
+            description: Brief description of what was completed
+            tokens_used: Optional current token count
+            status_ok: Whether step completed successfully
+
+        Returns:
+            Updated CycleStatus
+        """
+        status = self.get_current_cycle()
+        if not status:
+            logger.warning("No active cycle - cannot complete step")
+            return None
+
+        # Create step completion record
+        step_record = {
+            'step': step_number,
+            'description': description,
+            'completed_at': datetime.now().isoformat(),
+            'status': 'OK' if status_ok else 'NOK'
+        }
+
+        if tokens_used is not None:
+            step_record['tokens_used'] = tokens_used
+            token_percent = (tokens_used / status.token_budget) * 100
+            step_record['token_percent'] = round(token_percent, 1)
+
+        status.steps_completed.append(step_record)
+        status.last_updated = datetime.now().isoformat()
+
+        self._save_cycle_status(status)
+
+        logger.info(f"✅ Step {step_number} completed: {description}")
 
         return status
 
@@ -537,6 +586,9 @@ def main():
     parser.add_argument("--tokens", type=int, help="Current token count")
     parser.add_argument("--next", help="Next action/task")
     parser.add_argument("--completed", nargs="+", help="Completed tasks")
+    parser.add_argument("--step-complete", type=int, help="Mark step as completed (step number)")
+    parser.add_argument("--step-desc", help="Description of completed step")
+    parser.add_argument("--cycle-end", help="Mark cycle as ended with reason")
 
     args = parser.parse_args()
 
@@ -557,11 +609,29 @@ def main():
         print(json.dumps(asdict(status), indent=2))
 
     elif args.command == "update":
-        status = manager.update_progress(
-            current_task=args.task,
-            tasks_completed=args.completed,
-            next_action=args.next
-        )
+        # Handle step completion if provided
+        if args.step_complete is not None:
+            description = args.step_desc or args.task or f"Step {args.step_complete}"
+            status = manager.complete_step(
+                step_number=args.step_complete,
+                description=description,
+                tokens_used=args.tokens,
+                status_ok=True
+            )
+        # Handle cycle end if provided
+        elif args.cycle_end:
+            status = manager.update_progress(
+                current_task=f"Cycle ended: {args.cycle_end}",
+                next_action="Cycle complete"
+            )
+            manager._log_cycle_report(status.cycle_number, f"ENDED: {args.cycle_end}")
+        # Regular progress update
+        else:
+            status = manager.update_progress(
+                current_task=args.task,
+                tasks_completed=args.completed,
+                next_action=args.next
+            )
         print(json.dumps(asdict(status), indent=2))
 
     elif args.command == "handoff":

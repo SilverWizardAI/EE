@@ -277,7 +277,7 @@ class EEMonitorWindow(QMainWindow):
         self.token_target_spinbox = QSpinBox()
         self.token_target_spinbox.setMinimum(20)
         self.token_target_spinbox.setMaximum(95)
-        self.token_target_spinbox.setValue(20)
+        self.token_target_spinbox.setValue(35)  # Default: 35% threshold
         self.token_target_spinbox.setSuffix("%")
         token_row.addWidget(self.token_target_spinbox)
         token_row.addStretch()
