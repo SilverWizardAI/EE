@@ -236,7 +236,7 @@ class EEMonitorWindow(QMainWindow):
         self.log_fh.flush()
 
     def init_ui(self):
-        self.setWindowTitle("🏛️ CCM")
+        self.setWindowTitle("🔄 CCM")
         self.setGeometry(100, 100, 1000, 1200)
 
         central = QWidget()
@@ -244,7 +244,7 @@ class EEMonitorWindow(QMainWindow):
         layout = QVBoxLayout(central)
 
         # Title
-        title = QLabel("🏛️ CCM")
+        title = QLabel("🔄 CCM")
         title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
