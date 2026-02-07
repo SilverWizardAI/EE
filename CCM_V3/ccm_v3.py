@@ -436,14 +436,6 @@ class CCMWindow(QMainWindow):
             return
 
         try:
-            # Clean up state files for fresh start (only if starting from cycle 0)
-            if self.current_cycle == 0:
-                next_steps_file = self.project_dir / "Next_Steps.md"
-                if next_steps_file.exists():
-                    # Reset to Step 1 for fresh start
-                    next_steps_file.write_text("Next: Step 1\n")
-                    self._log("🔄 Reset Next_Steps.md for fresh start")
-
             # Instrument project
             self._log(f"🔧 Instrumenting project with {self.selected_plan}...")
             TCCSetup.instrument_project(
@@ -472,9 +464,17 @@ class CCMWindow(QMainWindow):
             # Inject startup prompt (C3 pattern)
             self._log("📝 Injecting startup prompt...")
 
-            # Increment cycle counter
+            # Increment cycle counter FIRST
             self.current_cycle += 1
             self.plan_active = True
+
+            # Clean up state files for fresh start (only Cycle 1)
+            if self.current_cycle == 1:
+                next_steps_file = self.project_dir / "Next_Steps.md"
+                if next_steps_file.exists():
+                    # Reset to Step 1 for fresh start
+                    next_steps_file.write_text("Next: Step 1\n")
+                    self._log("🔄 Reset Next_Steps.md for fresh start")
 
             # Cycle-aware startup prompt
             if self.current_cycle == 1:
@@ -501,8 +501,13 @@ class CCMWindow(QMainWindow):
             self._log(f"❌ Failed to start TCC: {e}")
             logger.error(f"TCC start failed: {e}", exc_info=True)
 
-    def _stop_tcc(self):
-        """Stop TCC - terminate terminal."""
+    def _stop_tcc(self, preserve_cycle=False):
+        """Stop TCC - terminate terminal.
+
+        Args:
+            preserve_cycle: If True, preserve cycle counter (for automatic cycle transitions).
+                           If False, reset cycle to 0 (for manual stops).
+        """
         if not self.tcc_session_id:
             self._log("⚠️  No TCC running")
             return
@@ -512,24 +517,32 @@ class CCMWindow(QMainWindow):
             self.terminal_manager.close_terminal(self.tcc_session_id)
             self._log(f"✅ TCC terminated (PID: {self.tcc_pid})")
 
-            self._reset_tcc_state()
+            self._reset_tcc_state(preserve_cycle=preserve_cycle)
 
         except Exception as e:
             self._log(f"⚠️  Failed to stop TCC: {e}")
             logger.error(f"TCC stop failed: {e}", exc_info=True)
 
-    def _reset_tcc_state(self):
-        """Reset TCC state after termination."""
+    def _reset_tcc_state(self, preserve_cycle=False):
+        """Reset TCC state after termination.
+
+        Args:
+            preserve_cycle: If True, preserve cycle counter (for automatic cycle transitions).
+                           If False, reset cycle to 0 (for manual stops).
+        """
         self.tcc_session_id = None
         self.tcc_terminal_id = None
         self.tcc_pid = None
         self.watchdog_deadline = None
 
-        # Reset orchestration state for fresh start
-        self.current_cycle = 0
+        # Reset process state
         self.plan_active = False
         self.last_message = None
         self.last_message_time = None
+
+        # Reset cycle counter for manual stops (but preserve for automatic transitions)
+        if not preserve_cycle:
+            self.current_cycle = 0
 
         self.tcc_status_label.setText("TCC: Not running")
         self.tcc_status_label.setStyleSheet("color: gray;")
@@ -608,8 +621,8 @@ class CCMWindow(QMainWindow):
         self._log(f"🔄 End of Cycle {cycle_num} received")
         self._log(f"🛑 Terminating TCC for cycle transition...")
 
-        # Stop current TCC
-        self._stop_tcc()
+        # Stop current TCC (preserve cycle counter for automatic transition)
+        self._stop_tcc(preserve_cycle=True)
 
         # Brief delay to ensure clean termination
         QTimer.singleShot(1000, self._start_tcc)  # Restart after 1 second
