@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QTabWidget, QComboBox
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
-from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor
 
 try:
     import httpx
@@ -52,6 +52,24 @@ if mm_path.exists():
 else:
     MESH_CLIENT_AVAILABLE = False
     MeshClient = None
+
+
+def create_ccm_icon():
+    """Create custom CCM icon with green background and white text."""
+    # Create a 128x128 pixmap
+    pixmap = QPixmap(128, 128)
+    pixmap.fill(QColor("#2E7D32"))  # Green background (Material Design Green 700)
+
+    # Draw CCM text
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QColor("white"))
+    font = QFont("Arial", 48, QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "CCM")
+    painter.end()
+
+    return QIcon(pixmap)
 
 
 class EEMSignals(QObject):
@@ -236,7 +254,8 @@ class EEMonitorWindow(QMainWindow):
         self.log_fh.flush()
 
     def init_ui(self):
-        self.setWindowTitle("🔄 CCM")
+        self.setWindowTitle("CCM")
+        self.setWindowIcon(create_ccm_icon())  # GREEN CCM icon
         self.setGeometry(100, 100, 1000, 1200)
 
         central = QWidget()
@@ -244,7 +263,7 @@ class EEMonitorWindow(QMainWindow):
         layout = QVBoxLayout(central)
 
         # Title
-        title = QLabel("🔄 CCM")
+        title = QLabel("CCM")
         title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
