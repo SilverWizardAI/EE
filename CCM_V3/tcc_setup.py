@@ -68,6 +68,16 @@ class TCCSetup:
         claude_md_file = claude_dir / "CLAUDE.md"
         TCCSetup._write_monitoring_instructions(claude_md_file, mcp_socket_path)
 
+        # Copy Plan_2.md to project root
+        plan_file = project_path / "Plan.md"
+        TCCSetup._copy_plan_to_project(plan_file)
+
+        # Create Next_Steps.md if doesn't exist
+        next_steps_file = project_path / "Next_Steps.md"
+        if not next_steps_file.exists():
+            next_steps_file.write_text("Next: Step 1\n")
+            logger.info(f"✅ Created Next_Steps.md")
+
         logger.info(f"✅ Project instrumented successfully")
 
         return {
@@ -76,7 +86,9 @@ class TCCSetup:
             "files_created": [
                 str(global_config_file),
                 str(settings_file),
-                str(claude_md_file)
+                str(claude_md_file),
+                str(plan_file),
+                str(next_steps_file)
             ]
         }
 
@@ -228,3 +240,27 @@ The plan will tell you what messages to send to CCM and when. Follow it precisel
 
         file_path.write_text(content)
         logger.info(f"✅ Monitoring instructions written: {file_path}")
+
+    @staticmethod
+    def _copy_plan_to_project(target_path: Path):
+        """
+        Copy Plan_2.md from plans directory to project root as Plan.md
+        """
+        # Get path to Plan_2.md
+        plan_source = Path(__file__).parent / "plans" / "Plan_2.md"
+
+        if not plan_source.exists():
+            logger.warning(f"Plan_2.md not found at {plan_source}")
+            # Create a simple default plan
+            default_plan = """# Test Plan
+
+Execute the steps as defined in this plan.
+"""
+            target_path.write_text(default_plan)
+            logger.info(f"✅ Created default Plan.md")
+            return
+
+        # Copy Plan_2.md to project as Plan.md
+        import shutil
+        shutil.copy2(plan_source, target_path)
+        logger.info(f"✅ Copied Plan_2.md to {target_path}")

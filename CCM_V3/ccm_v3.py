@@ -94,6 +94,10 @@ class CCMWindow(QMainWindow):
         self.tcc_pid = None
         self.watchdog_deadline = None
 
+        # Multi-cycle orchestration
+        self.current_cycle = 0  # 0 = not started, 1+ = cycle number
+        self.plan_active = False  # True when plan is being executed
+
         # Logging
         self.log_dir = Path(__file__).parent / "logs"
         self.log_dir.mkdir(exist_ok=True)
@@ -320,13 +324,23 @@ class CCMWindow(QMainWindow):
 
             # Inject startup prompt (C3 pattern)
             self._log("📝 Injecting startup prompt...")
-            startup_prompt = "Read Plan.md and execute it immediately and completely."
+
+            # Increment cycle counter
+            self.current_cycle += 1
+            self.plan_active = True
+
+            # Cycle-aware startup prompt
+            if self.current_cycle == 1:
+                startup_prompt = "You are Cycle 1. Read Plan.md and execute it from the beginning."
+            else:
+                startup_prompt = f"You are Cycle {self.current_cycle}. Read Plan.md and Next_Steps.md. Continue from the next step indicated in Next_Steps.md."
+
             self.terminal_manager.inject_initialization_command(
                 terminal_id=self.tcc_terminal_id,
                 session_id=self.tcc_session_id,
                 command=startup_prompt
             )
-            self._log("✅ Startup prompt injected")
+            self._log(f"✅ Startup prompt injected (Cycle {self.current_cycle})")
 
             # Start watchdog
             self.watchdog_deadline = datetime.now() + timedelta(minutes=self.watchdog_timeout_minutes)
@@ -379,10 +393,54 @@ class CCMWindow(QMainWindow):
         """Handle TCC message (runs in Qt main thread)."""
         self._log(f"📨 TCC: '{message}'")
 
-        # Reset watchdog
+        # Check for special orchestration messages
+        if message.startswith("End of Cycle "):
+            self._handle_end_of_cycle(message)
+            return
+
+        if message == "Plan Fully Executed":
+            self._handle_plan_complete()
+            return
+
+        # Reset watchdog for normal messages
         if self.watchdog_deadline:
             self.watchdog_deadline = datetime.now() + timedelta(minutes=self.watchdog_timeout_minutes)
             self._log(f"⏱️  Watchdog reset to {self.watchdog_timeout_minutes:02d}:00")
+
+    def _handle_end_of_cycle(self, message: str):
+        """Handle 'End of Cycle X' message - terminate and spawn next cycle."""
+        # Extract cycle number from message (format: "End of Cycle 1")
+        try:
+            cycle_num = int(message.split()[-1])
+        except (ValueError, IndexError):
+            self._log(f"⚠️  Invalid End of Cycle message: {message}")
+            return
+
+        self._log(f"🔄 End of Cycle {cycle_num} received")
+        self._log(f"🛑 Terminating TCC for cycle transition...")
+
+        # Stop current TCC
+        self._stop_tcc()
+
+        # Brief delay to ensure clean termination
+        QTimer.singleShot(1000, self._start_tcc)  # Restart after 1 second
+
+        self._log(f"🚀 Cycle {cycle_num + 1} will start in 1 second...")
+
+    def _handle_plan_complete(self):
+        """Handle 'Plan Fully Executed' message - terminate and stop orchestration."""
+        self._log("🎉 Plan Fully Executed!")
+        self._log("🛑 Terminating TCC...")
+
+        # Stop TCC
+        self._stop_tcc()
+
+        # Reset orchestration state
+        self.plan_active = False
+        self.current_cycle = 0
+
+        self._log("✅ TCC terminated - Workflow complete")
+        self._log("📊 Orchestration stopped - Ready for next plan")
 
     def _check_watchdog(self):
         """Check watchdog timer (called every second)."""
