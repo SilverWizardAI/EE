@@ -26,18 +26,18 @@ class TCCSetup:
     @staticmethod
     def instrument_project(
         project_path: Path,
-        ccm_port: int = 50001
+        mcp_socket_path: Path
     ) -> dict:
         """
         Instrument a project for TCC monitoring.
 
         Creates:
-        1. .claude/mcp_settings.json - Points to CCM MCP server
+        1. .claude/mcp_settings.json - Points to MCP Access Proxy
         2. .claude/settings.json - SessionStart hook sends "TCC started"
 
         Args:
             project_path: Path to project directory
-            ccm_port: CCM MCP server port
+            mcp_socket_path: Unix socket path of Real MCP Server
 
         Returns:
             dict with status and files created
@@ -54,17 +54,19 @@ class TCCSetup:
         claude_dir = project_path / ".claude"
         claude_dir.mkdir(exist_ok=True)
 
-        # Create MCP settings
-        mcp_settings_file = claude_dir / "mcp_settings.json"
-        TCCSetup._write_mcp_settings(mcp_settings_file, ccm_port)
+        # Write to GLOBAL Claude Code config (where Claude CLI reads from)
+        global_config_dir = Path.home() / "Library" / "Application Support" / "Claude"
+        global_config_dir.mkdir(parents=True, exist_ok=True)
+        global_config_file = global_config_dir / "claude_desktop_config.json"
+        TCCSetup._write_mcp_settings(global_config_file, mcp_socket_path)
 
         # Create/update settings.json with SessionStart hook
         settings_file = claude_dir / "settings.json"
-        TCCSetup._write_session_start_hook(settings_file, ccm_port)
+        TCCSetup._write_session_start_hook(settings_file, mcp_socket_path)
 
         # Create CLAUDE.md explaining CCM monitoring
         claude_md_file = claude_dir / "CLAUDE.md"
-        TCCSetup._write_monitoring_instructions(claude_md_file, ccm_port)
+        TCCSetup._write_monitoring_instructions(claude_md_file, mcp_socket_path)
 
         logger.info(f"✅ Project instrumented successfully")
 
@@ -72,32 +74,52 @@ class TCCSetup:
             "success": True,
             "project": str(project_path),
             "files_created": [
-                str(mcp_settings_file),
+                str(global_config_file),
                 str(settings_file),
                 str(claude_md_file)
             ]
         }
 
     @staticmethod
-    def _write_mcp_settings(file_path: Path, ccm_port: int):
-        """Write MCP settings pointing to CCM."""
-        mcp_settings = {
-            "mcpServers": {
-                "ccm": {
-                    "url": f"http://localhost:{ccm_port}/mcp"
-                }
-            }
+    def _write_mcp_settings(file_path: Path, mcp_socket_path: Path):
+        """
+        Write MCP settings pointing to MCP Access Proxy.
+
+        TCC spawns the Access Proxy which connects to Real MCP Server.
+        Merges with existing MCP servers if file exists.
+        """
+        # Load existing settings if present
+        if file_path.exists():
+            try:
+                mcp_settings = json.loads(file_path.read_text())
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in {file_path}, creating new")
+                mcp_settings = {}
+        else:
+            mcp_settings = {}
+
+        # Ensure mcpServers key exists
+        if "mcpServers" not in mcp_settings:
+            mcp_settings["mcpServers"] = {}
+
+        # Get path to mcp_access_proxy.py
+        access_proxy_script = Path(__file__).parent / "mcp_access_proxy.py"
+
+        # Add/update ccm server
+        mcp_settings["mcpServers"]["ccm"] = {
+            "command": "python3",
+            "args": [str(access_proxy_script), str(mcp_socket_path)]
         }
 
         file_path.write_text(json.dumps(mcp_settings, indent=2))
         logger.info(f"✅ MCP settings written: {file_path}")
 
     @staticmethod
-    def _write_session_start_hook(file_path: Path, ccm_port: int):
+    def _write_session_start_hook(file_path: Path, mcp_socket_path: Path):
         """
         Write/update settings.json with SessionStart hook.
 
-        Hook sends "TCC started" message to CCM via MCP.
+        Hook shows that monitoring is active. TCC will send messages via log_message tool.
         """
         # Load existing settings if present
         if file_path.exists():
@@ -109,17 +131,11 @@ class TCCSetup:
         else:
             settings = {}
 
-        # Create SessionStart hook using NEW format (matcher-based)
-        # Uses MCP to call log_message tool
-        # Added visibility: echo statements show instrumentation status
+        # Simple hook that shows monitoring is active
         hook_command = (
-            f'echo "\\n🎯 CCM Monitoring Active (port {ccm_port})" && '
-            f'echo "📤 Sending startup notification to CCM..." && '
-            f'curl -X POST http://localhost:{ccm_port}/mcp '
-            f'-H "Content-Type: application/json" '
-            f'-d \'{{"jsonrpc": "2.0", "id": 1, "method": "tools/call", '
-            f'"params": {{"name": "log_message", "arguments": {{"message": "TCC started"}}}}}}\' '
-            f'&& echo "✅ CCM notified: TCC started\\n" || echo "⚠️  CCM notification failed (CCM may not be running)\\n"'
+            f'echo "\\n🎯 CCM Monitoring Active\\n'
+            f'   MCP Server: {mcp_socket_path.name}\\n'
+            f'   Tool: log_message (send progress updates)\\n"'
         )
 
         # Add hooks section with NEW format (array containing object with hooks)
@@ -144,7 +160,7 @@ class TCCSetup:
         logger.info(f"✅ SessionStart hook written: {file_path}")
 
     @staticmethod
-    def _write_monitoring_instructions(file_path: Path, ccm_port: int):
+    def _write_monitoring_instructions(file_path: Path, mcp_socket_path: Path):
         """
         Write CLAUDE.md explaining CCM monitoring to TCC.
 
@@ -186,13 +202,13 @@ Use the log_message tool from the ccm MCP server:
 1. **SessionStart hook ran automatically** - You already notified CCM that this session started
 2. **Watchdog is active** - If CCM doesn't receive messages for 2 minutes, your session will be terminated
 3. **Send updates proactively** - Don't wait for the watchdog to expire
-4. **CCM port**: {ccm_port}
+4. **MCP Socket**: {mcp_socket_path.name}
 
 ## MCP Server Configuration
 
 The CCM MCP server is configured in `.claude/mcp_settings.json`:
 - Server name: `ccm`
-- URL: `http://localhost:{ccm_port}/mcp`
+- Socket: `{mcp_socket_path}`
 
 ---
 
