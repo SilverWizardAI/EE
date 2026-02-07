@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-EE Monitor GUI - Heartbeat-Driven Protocol
+CCM GUI - Heartbeat-Driven Protocol
 
 Monitor actively polls EE instance (not passive waiting).
 EE instance is purely reactive - responds only when prompted.
@@ -128,7 +128,7 @@ class EEMRequestHandler(BaseHTTPRequestHandler):
 
 
 class EEMonitorWindow(QMainWindow):
-    """EE Monitor with heartbeat-driven protocol."""
+    """CCM (Cycle Control Manager) with heartbeat-driven protocol."""
 
     def __init__(self, ee_root: Path):
         super().__init__()
@@ -149,7 +149,7 @@ class EEMonitorWindow(QMainWindow):
         self.log_fh = open(self.log_file, 'a', encoding='utf-8')
 
         self.log_to_file(f"EEM: {'='*60}")
-        self.log_to_file(f"EEM: EE Monitor started at {datetime.now().isoformat()}")
+        self.log_to_file(f"CCM: CCM started at {datetime.now().isoformat()}")
         self.log_to_file(f"EEM: {'='*60}\n")
 
         # MM Mesh Setup with MeshClient
@@ -221,7 +221,7 @@ class EEMonitorWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.log_to_file(f"EEM: \n{'='*60}")
-        self.log_to_file(f"EEM: EE Monitor closed")
+        self.log_to_file(f"CCM: CCM closed")
         self.log_to_file(f"EEM: {'='*60}\n")
         if hasattr(self, 'log_fh'):
             self.log_fh.close()
@@ -236,7 +236,7 @@ class EEMonitorWindow(QMainWindow):
         self.log_fh.flush()
 
     def init_ui(self):
-        self.setWindowTitle("🏛️ EE Monitor")
+        self.setWindowTitle("🏛️ CCM")
         self.setGeometry(100, 100, 1000, 1200)
 
         central = QWidget()
@@ -244,7 +244,7 @@ class EEMonitorWindow(QMainWindow):
         layout = QVBoxLayout(central)
 
         # Title
-        title = QLabel("🏛️ EE Monitor")
+        title = QLabel("🏛️ CCM")
         title.setFont(QFont("Arial", 20, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
@@ -463,7 +463,7 @@ class EEMonitorWindow(QMainWindow):
 
         layout.addWidget(self.tabs)
 
-        self.log_info("EE Monitor started")
+        self.log_info("CCM started")
         self.log_info(f"Log file: {self.log_file}")
 
     def _load_available_plans(self):
