@@ -1,6 +1,6 @@
 # EE - Completed Work
 
-**Last Updated:** 2026-02-07 (CCM V3 Multi-Cycle Orchestration ✅ PRODUCTION READY)
+**Last Updated:** 2026-02-07 (CCM V3 Cycle Counter Bug Fix ✅ VALIDATED)
 
 ---
 
@@ -58,14 +58,17 @@ Implemented complete production-ready multi-cycle orchestration system for CCM. 
 - ✅ 100% message delivery rate (3/3 messages)
 - ✅ Watchdog timeout: Exactly 120s after last message
 
-**Plan_2.md Test (Multi-Cycle Workflow):**
-- ✅ Cycle 1 (TCC #1): Steps 1-2 → "End of Cycle 1" at [14:24:38]
-- ✅ CCM terminated TCC #1 (PID 65532) automatically
-- ✅ CCM spawned TCC #2 (PID 66124) after 1 second
-- ✅ Cycle 2: Step 3 complete at [14:25:06]
+**Plan_2.md Test (Multi-Cycle Workflow - FULL 4-CYCLE RUN):**
+- ✅ Cycle 1 (TCC #1, PID 80406): Steps 1-2 → "End of Cycle 1" at [15:06:30]
+- ✅ Cycle 2 (TCC #2, PID 80818): Steps 3-4 → "End of Cycle 2" at [15:07:14]
+- ✅ Cycle 3 (TCC #3, PID 81259): Steps 5-6 → "End of Cycle 3" at [15:08:04]
+- ✅ Cycle 4 (TCC #4, PID 81698): Step 7 → "Plan Fully Executed" at [15:08:40]
+- ✅ All cycle numbers correct (1→2→3→4) - **CYCLE BUG FIXED**
 - ✅ State persistence: Next_Steps.md updated between cycles
-- ✅ Git commits: Created after each step
-- ✅ Cycle context: TCC knew its cycle number
+- ✅ Automatic TCC termination and restart (1s delay)
+- ✅ Plan completion detection working
+- ✅ Total runtime: ~2m 45s for 7-step, 4-cycle plan
+- ✅ All 4 TCC instances terminated cleanly (no zombies)
 
 **User Confirmation Dialog:**
 - ✅ Shows on watchdog timeout
@@ -152,6 +155,17 @@ CCM_V3/
 - **Reality:** TCC may process/think without sending messages
 - **Fix:** User confirmation dialog with evidence before termination
 - **Commit:** ae39bd0
+
+**Issue #3: Cycle Counter Reset on Automatic Transitions**
+- **Problem:** Automatic transition from Cycle 1→2 incorrectly labeled new cycle as "Cycle 1" again
+- **Cause:** `_handle_end_of_cycle()` → `_stop_tcc()` → `_reset_tcc_state()` reset `current_cycle = 0`
+- **Root Issue:** Fresh start check `if current_cycle == 0:` happened BEFORE incrementing counter
+- **Fix:** Context-aware cycle counter management with `preserve_cycle` parameter
+  - Automatic transitions: `_stop_tcc(preserve_cycle=True)` preserves counter
+  - Manual stops: `_stop_tcc()` defaults to `preserve_cycle=False`, resets to 0
+  - Moved fresh start check to AFTER increment: `if current_cycle == 1:`
+- **Commit:** febb1da
+- **Test Result:** Full 4-cycle run successful (Cycle 1→2→3→4) ✅
 
 ### Performance Metrics
 - **Message delivery:** 100% (3/3)
