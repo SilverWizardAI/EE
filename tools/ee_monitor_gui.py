@@ -671,8 +671,10 @@ class EEMonitorWindow(QMainWindow):
         # Stop heartbeat
         self.heartbeat_timer.stop()
 
-        # Terminate terminal
+        # 10-second observer window (user can see TCC final state)
         if self.ee_terminal_id:
+            self.log_info("⏸️  Waiting 10 seconds (observer window)...")
+            time.sleep(10)
             self._terminate_ee_terminal()
 
         # Enable start button for next cycle
@@ -694,8 +696,10 @@ class EEMonitorWindow(QMainWindow):
             # Stop heartbeat
             self.heartbeat_timer.stop()
 
-            # Terminate current terminal
+            # 10-second observer window (user can see TCC final state)
             if self.ee_terminal_id:
+                self.log_info("⏸️  Waiting 10 seconds (observer window)...")
+                time.sleep(10)
                 self._terminate_ee_terminal()
                 time.sleep(1)  # Give it time to close
 
