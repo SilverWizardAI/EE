@@ -280,6 +280,9 @@ class CCMWindow(QMainWindow):
         log_group.setLayout(log_layout)
         layout.addWidget(log_group)
 
+        # Load available plans (after all widgets created)
+        self._load_plans()
+
     def _load_settings(self):
         """Load persisted settings."""
         last_project = self.settings.get("last_project_path")
