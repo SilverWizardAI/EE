@@ -1,62 +1,119 @@
 # EE - Completed Work
 
-**Last Updated:** 2026-02-07 (CCM V3 MCP Architecture ✅ PRODUCTION READY)
+**Last Updated:** 2026-02-07 (CCM V3 Multi-Cycle Orchestration ✅ PRODUCTION READY)
 
 ---
 
-## CCM V3 - Unix Socket MCP Architecture ✅ PRODUCTION READY
+## CCM V3 - Multi-Cycle Autonomous Orchestration ✅ PRODUCTION READY
 
 **Date:** 2026-02-07
-**Session:** Unix socket MCP architecture implementation and validation
-**Status:** ✅ **PRODUCTION READY** - Full lifecycle tested and validated
+**Session:** Multi-cycle workflow orchestration with plan library and user-controlled termination
+**Status:** ✅ **PRODUCTION READY** - Full autonomous orchestration with safety controls
 
 ### Summary
-Implemented and validated Unix socket-based MCP architecture for CCM monitoring. Real MCP Server runs as background thread in CCM, MCP Access Proxy provides stdio bridge for TCC. **End-to-end communication proven working with 100% message delivery and perfect watchdog behavior.**
+Implemented complete production-ready multi-cycle orchestration system for CCM. Features intelligent plan selection, autonomous cycle management with state persistence, git integration, and **user-controlled watchdog termination** preventing erroneous kills of active TCC sessions.
 
-### Architecture
-- **Real MCP Server** (mcp_real_server.py): Background thread in CCM, listens on Unix socket
-- **MCP Access Proxy** (mcp_access_proxy.py): Stdio subprocess spawned by TCC, bridges to Real Server
-- **Unix Socket**: `/tmp/ccm_session_<uuid>.sock` for optimized local IPC
-- **Qt Signals**: Thread-safe communication between MCP thread and GUI thread
-- **Watchdog Timer**: 2-minute timeout with automatic TCC termination
+### Features Implemented
 
-### Test Results - ALL PASSED ✅
-Comprehensive validation test executed with Plan.md:
+**1. Multi-Cycle Orchestration**
+- Autonomous TCC lifecycle management (spawn → run → terminate → spawn next)
+- Cycle-aware startup prompts (tells TCC which cycle it is)
+- State persistence via Next_Steps.md
+- Intelligent cycle transitions on "End of Cycle X"
+- Plan completion detection on "Plan Fully Executed"
+- Git commits after each step
 
-**Messages Sent/Received:**
+**2. Plan Library System**
+- Plan selection UI with dropdown
+- Metadata parsing (status, steps, cycles, objective)
+- Plan description display
+- Plans directory: CCM_V3/plans/
+  - Plan_1.md (Archived - basic monitoring test)
+  - Plan_2.md (Active - 7-step multi-cycle workflow)
+
+**3. User-Controlled Watchdog (CRITICAL FIX)**
+- **Problem:** User observed TCC actively working, CCM killed it anyway
+- **Solution:** Mandatory confirmation dialog before termination
+- Evidence display: last message, timestamp, elapsed time, PID, cycle
+- Three options:
+  - 🛑 Terminate TCC (kill if truly idle)
+  - ⏱️ Wait 2 More Minutes (extend watchdog - DEFAULT)
+  - ❌ Disable Watchdog (run indefinitely)
+- All decisions logged for debugging
+- Respects user observation over automated timeout
+
+**4. Architecture**
+- **Real MCP Server** (mcp_real_server.py): Background thread, Unix socket listener
+- **MCP Access Proxy** (mcp_access_proxy.py): Stdio bridge for TCC
+- **Unix Socket**: `/tmp/ccm_session_<uuid>.sock` for local IPC
+- **Qt Signals**: Thread-safe MCP thread → GUI communication
+- **Watchdog Timer**: 2-minute timeout with user confirmation
+
+### Test Results - MULTI-CYCLE VALIDATION ✅
+
+**Plan_1.md Test (Basic Monitoring):**
 - ✅ "Start of Step 1" → Received at [13:44:21]
 - ✅ "End of Step 1" → Received at [13:44:46] (25s later)
 - ✅ "End of Cycle" → Received at [13:44:58] (12s later)
-- ✅ **100% message delivery rate** (3/3 messages)
+- ✅ 100% message delivery rate (3/3 messages)
+- ✅ Watchdog timeout: Exactly 120s after last message
 
-**Watchdog Timer:**
-- ✅ Reset after each message (3/3 resets)
-- ✅ Timeout accuracy: 120.0s (exactly 2:00 as configured)
-- ✅ Clean TCC termination after timeout
+**Plan_2.md Test (Multi-Cycle Workflow):**
+- ✅ Cycle 1 (TCC #1): Steps 1-2 → "End of Cycle 1" at [14:24:38]
+- ✅ CCM terminated TCC #1 (PID 65532) automatically
+- ✅ CCM spawned TCC #2 (PID 66124) after 1 second
+- ✅ Cycle 2: Step 3 complete at [14:25:06]
+- ✅ State persistence: Next_Steps.md updated between cycles
+- ✅ Git commits: Created after each step
+- ✅ Cycle context: TCC knew its cycle number
+
+**User Confirmation Dialog:**
+- ✅ Shows on watchdog timeout
+- ✅ Displays evidence (last message, time, PID, cycle)
+- ✅ Three options work correctly
+- ✅ All decisions properly logged
+- ✅ Prevents erroneous termination of active TCC
 
 **Process Management:**
-- ✅ TCC spawned successfully (PID: 51261)
-- ✅ Terminal created and instrumented
-- ✅ Plan.md auto-executed via SessionStart hook
-- ✅ Terminated cleanly with no zombies
-
-**Timing Analysis:**
-- Total test duration: 37 seconds (well within 2-minute watchdog)
-- TCC overhead: ~10-12s per step (expected for Claude processing)
-- Watchdog timeout: Exactly 120s after last message ✅
+- ✅ Multiple TCC lifecycles (4+ instances tested)
+- ✅ Clean termination (no zombies)
+- ✅ Automatic restart on cycle end
+- ✅ Plan completion detection working
 
 ### What Changed
-- ✅ Created mcp_real_server.py (132 lines) - Real MCP Server with Unix socket listener
-- ✅ Created mcp_access_proxy.py (255 lines) - Stdio bridge to Real Server
-- ✅ Created ccm_v3.py (450+ lines) - Main CCM application with GUI
-- ✅ Created tcc_setup.py - TCC project instrumentation
-- ✅ Created mcp_server.py - Simple MCP server (KISS iteration)
-- ✅ Created launch.sh - Launcher script
-- ✅ Fixed SessionStart hook format (array-of-objects)
-- ✅ Fixed watchdog termination (session_id vs terminal_id bug)
-- ✅ Added custom CCM icon (green background, white text)
-- ✅ Half-screen layout with bottom padding
-- ✅ Auto-scroll log behavior
+
+**Multi-Cycle Orchestration:**
+- ✅ Added cycle counter tracking (self.current_cycle)
+- ✅ Cycle-aware startup prompts with cycle number
+- ✅ _handle_end_of_cycle() - Automatic TCC restart
+- ✅ _handle_plan_complete() - Stop on "Plan Fully Executed"
+- ✅ Next_Steps.md state persistence
+
+**Plan Library:**
+- ✅ Created plans/ directory with Plan_1.md, Plan_2.md
+- ✅ Added plan selection dropdown (QComboBox)
+- ✅ Plan metadata parsing (status, steps, cycles, objective)
+- ✅ Plan description display (HTML formatted)
+- ✅ Auto-select active plans
+- ✅ _load_plans(), _parse_plan_metadata(), _on_plan_selected()
+- ✅ Updated tcc_setup.py to accept plan_file parameter
+
+**User Confirmation Dialog:**
+- ✅ Added QMessageBox import
+- ✅ Evidence tracking: last_message, last_message_time
+- ✅ _handle_watchdog_timeout() shows confirmation dialog
+- ✅ Three buttons: Terminate / Wait 2 Min / Disable Watchdog
+- ✅ Evidence display in dialog
+- ✅ All decisions logged
+
+**Infrastructure:**
+- ✅ Created mcp_real_server.py (132 lines)
+- ✅ Created mcp_access_proxy.py (255 lines)
+- ✅ Created ccm_v3.py (700+ lines with new features)
+- ✅ Created tcc_setup.py with plan copying
+- ✅ Fixed SessionStart hook format
+- ✅ Custom CCM icon
+- ✅ Half-screen layout
 
 ### Architecture Decisions
 1. **Direct JSON Protocol** - Not using JSON-RPC 2.0 (simpler, our code on both ends)
@@ -67,15 +124,34 @@ Comprehensive validation test executed with Plan.md:
 ### Files Created/Modified
 ```
 CCM_V3/
-├── ccm_v3.py              # Main application (450+ lines)
+├── ccm_v3.py              # Main application (700+ lines with orchestration)
 ├── mcp_real_server.py     # Real MCP Server (132 lines)
 ├── mcp_access_proxy.py    # Stdio Access Proxy (255 lines)
-├── tcc_setup.py           # TCC instrumentation
+├── tcc_setup.py           # TCC instrumentation with plan copying
 ├── mcp_server.py          # Simple MCP server
 ├── launch.sh              # Launcher script
-├── README.md              # Documentation
+├── plans/                 # Plan library
+│   ├── Plan_1.md          # Basic monitoring test (archived)
+│   ├── Plan_2.md          # Multi-cycle workflow (active)
+│   └── README.md          # Plan documentation
+├── README.md              # CCM documentation
 └── logs/                  # Session logs
 ```
+
+### Critical Bug Fixes
+
+**Issue #1: GUI Initialization Order**
+- **Problem:** CCM crashed on startup with AttributeError
+- **Cause:** _load_plans() called before log_text widget created
+- **Fix:** Moved _load_plans() to end of _build_gui()
+- **Commits:** 3d92e54, 4f1c08f
+
+**Issue #2: Erroneous TCC Termination**
+- **Problem:** User observed TCC actively working, CCM killed it
+- **Cause:** Watchdog only sees MCP messages, not actual work
+- **Reality:** TCC may process/think without sending messages
+- **Fix:** User confirmation dialog with evidence before termination
+- **Commit:** ae39bd0
 
 ### Performance Metrics
 - **Message delivery:** 100% (3/3)
