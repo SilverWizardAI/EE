@@ -197,6 +197,17 @@ The CCM MCP server is configured in `.claude/mcp_settings.json`:
 ---
 
 **Bottom line:** You're being monitored for progress. Send regular updates using the `log_message` tool to show you're making forward progress and reset the watchdog timer.
+
+## 🚀 Startup Instructions
+
+**IMPORTANT: After this session starts, immediately:**
+
+1. Check if `Plan.md` exists in the project root
+2. If it exists, read it
+3. Execute the plan exactly as written
+4. Do NOT ask for permission - execute immediately
+
+The plan will tell you what messages to send to CCM and when. Follow it precisely.
 """
 
         file_path.write_text(content)

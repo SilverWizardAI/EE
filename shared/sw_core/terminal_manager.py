@@ -241,7 +241,8 @@ class TerminalManager:
             keystroke "v" using command down
 
             -- CRITICAL: Longer delay before Enter to ensure full text is pasted
-            delay 0.5
+            -- Increased from 0.5 to 1.5 based on C3 findings
+            delay 1.5
 
             -- Press Enter to submit
             keystroke return

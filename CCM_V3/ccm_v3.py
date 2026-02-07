@@ -314,6 +314,16 @@ class CCMWindow(QMainWindow):
             self.tcc_status_label.setText(f"TCC: Running (PID: {self.tcc_pid})")
             self.tcc_status_label.setStyleSheet("color: #4CAF50;")
 
+            # Inject startup prompt (C3 pattern)
+            self._log("📝 Injecting startup prompt...")
+            startup_prompt = "Read Plan.md and execute it immediately and completely."
+            self.terminal_manager.inject_initialization_command(
+                terminal_id=self.tcc_terminal_id,
+                session_id=self.tcc_session_id,
+                command=startup_prompt
+            )
+            self._log("✅ Startup prompt injected")
+
             # Start watchdog
             self.watchdog_deadline = datetime.now() + timedelta(minutes=self.watchdog_timeout_minutes)
             self._log(f"⏱️  Watchdog started ({self.watchdog_timeout_minutes} minutes)")
