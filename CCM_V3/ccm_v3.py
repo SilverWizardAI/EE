@@ -23,7 +23,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QTextEdit, QGroupBox, QPushButton, QFileDialog, QComboBox
+    QLabel, QTextEdit, QGroupBox, QPushButton, QFileDialog, QComboBox,
+    QMessageBox
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor
@@ -98,6 +99,10 @@ class CCMWindow(QMainWindow):
         self.current_cycle = 0  # 0 = not started, 1+ = cycle number
         self.plan_active = False  # True when plan is being executed
         self.selected_plan = None  # Selected plan file name (e.g., "Plan_2.md")
+
+        # Watchdog evidence tracking
+        self.last_message = None  # Last message received from TCC
+        self.last_message_time = None  # Timestamp of last message
 
         # Logging
         self.log_dir = Path(__file__).parent / "logs"
@@ -511,6 +516,10 @@ class CCMWindow(QMainWindow):
         """Handle TCC message (runs in Qt main thread)."""
         self._log(f"📨 TCC: '{message}'")
 
+        # Track last message for evidence
+        self.last_message = message
+        self.last_message_time = datetime.now()
+
         # Check for special orchestration messages
         if message.startswith("End of Cycle "):
             self._handle_end_of_cycle(message)
@@ -585,13 +594,72 @@ class CCMWindow(QMainWindow):
             self._handle_watchdog_timeout()
 
     def _handle_watchdog_timeout(self):
-        """Handle watchdog timeout - kill TCC."""
+        """Handle watchdog timeout - ask user for confirmation before terminating."""
         self._log("⏰ WATCHDOG TIMEOUT - No messages for 2 minutes")
-        self._log("🛑 Terminating TCC...")
 
-        self._stop_tcc()
+        # Gather evidence
+        if self.last_message and self.last_message_time:
+            elapsed = (datetime.now() - self.last_message_time).total_seconds()
+            elapsed_mins = int(elapsed // 60)
+            elapsed_secs = int(elapsed % 60)
+            evidence = (
+                f"Last message: \"{self.last_message}\"\n"
+                f"Received: {self.last_message_time.strftime('%H:%M:%S')}\n"
+                f"Time elapsed: {elapsed_mins}m {elapsed_secs}s\n"
+                f"TCC PID: {self.tcc_pid}\n"
+                f"Cycle: {self.current_cycle}"
+            )
+        else:
+            evidence = (
+                f"No messages received since startup\n"
+                f"TCC PID: {self.tcc_pid}\n"
+                f"Cycle: {self.current_cycle}"
+            )
 
-        self._log("✅ TCC terminated due to timeout")
+        # Log evidence
+        self._log(f"📊 Evidence: Last message \"{self.last_message or 'None'}\" "
+                  f"at {self.last_message_time.strftime('%H:%M:%S') if self.last_message_time else 'N/A'}")
+
+        # Ask user for confirmation
+        reply = QMessageBox.question(
+            self,
+            "⏰ Watchdog Timeout",
+            f"TCC appears to be idle (no MCP messages for 2 minutes).\n\n"
+            f"Evidence:\n{evidence}\n\n"
+            f"TCC may still be working (thinking, reading files, etc.)\n"
+            f"without sending progress messages.\n\n"
+            f"What would you like to do?",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No |
+            QMessageBox.StandardButton.Retry,
+            QMessageBox.StandardButton.No
+        )
+
+        # Map buttons to actions
+        reply.setButtonText(QMessageBox.StandardButton.Yes, "Terminate TCC")
+        reply.setButtonText(QMessageBox.StandardButton.No, "Wait 2 More Minutes")
+        reply.setButtonText(QMessageBox.StandardButton.Retry, "Disable Watchdog")
+
+        if reply.button(reply.clickedButton()) == QMessageBox.StandardButton.Yes:
+            # User confirmed termination
+            self._log("👤 User confirmed: Terminating TCC")
+            self._stop_tcc()
+            self._log("✅ TCC terminated by user decision")
+
+        elif clicked == disable_btn:
+            # Disable watchdog
+            self._log("👤 User chose: Disable watchdog")
+            self.watchdog_deadline = None
+            self.watchdog_label.setText("Watchdog: DISABLED")
+            self.watchdog_label.setStyleSheet("color: gray;")
+            self._log("⏱️  Watchdog disabled - TCC will run indefinitely")
+
+        else:
+            # Wait 2 more minutes
+            self._log("👤 User chose: Wait 2 more minutes")
+            self.watchdog_deadline = datetime.now() + timedelta(minutes=2)
+            self.watchdog_label.setStyleSheet("color: #FFA500;")
+            self._log("⏱️  Watchdog extended for 2 more minutes")
 
     def _log(self, message: str):
         """Log to GUI and file."""
