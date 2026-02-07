@@ -196,9 +196,6 @@ class CCMWindow(QMainWindow):
         plan_group.setLayout(plan_layout)
         layout.addWidget(plan_group)
 
-        # Load available plans
-        self._load_plans()
-
         # Status
         status_group = QGroupBox("📊 Status")
         status_layout = QVBoxLayout()
